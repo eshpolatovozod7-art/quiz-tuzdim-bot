@@ -1,0 +1,24 @@
+# Muhit va virtual env
+.env
+venv/
+.venv/
+env/
+
+# Python keshlari
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Ma'lumotlar bazasi va yuklangan fayllar
+data/*.db
+data/exports/*
+data/uploads/*
+!data/exports/.gitkeep
+!data/uploads/.gitkeep
+
+# IDE va OS fayllari
+.vscode/
+.idea/
+.DS_Store
+*.log
