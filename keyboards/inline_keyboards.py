@@ -134,32 +134,37 @@ def get_quiz_timer_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-def get_quiz_card_keyboard(quiz_id: str, bot_username: str = "quiz_tuzdimbot") -> InlineKeyboardMarkup:
+def get_quiz_card_keyboard(quiz_id: str, bot_username: str = "quiz_tuzdimbot", has_media: bool = True) -> InlineKeyboardMarkup:
     """Yangi tuzilgan quiz kartochkasi klaviaturasi."""
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="▶️ Testni boshlash (Interaktiv)", callback_data=f"qrun:start:{quiz_id}"),
-            ],
-            [
-                InlineKeyboardButton(text="📩 Barcha testlarni tashlash", callback_data=f"qrun:dump:{quiz_id}"),
-            ],
-            [
-                InlineKeyboardButton(text="📄 PDF test varaqasi", callback_data=f"qexp:pdf:{quiz_id}"),
-                InlineKeyboardButton(text="📝 Word (.docx)", callback_data=f"qexp:docx:{quiz_id}"),
-            ],
-            [
-                InlineKeyboardButton(text="🤖 @QuizBot matni", callback_data=f"qexp:quizbot:{quiz_id}"),
-                InlineKeyboardButton(text="📤 Ulashish", switch_inline_query=f"quiz_{quiz_id}"),
-            ],
-            [
-                InlineKeyboardButton(text="🔙 Asosiy menyu", callback_data="menu:home"),
-            ],
-        ]
-    )
+    rows = [
+        [
+            InlineKeyboardButton(text="▶️ Testni boshlash (Interaktiv)", callback_data=f"qrun:start:{quiz_id}"),
+        ],
+        [
+            InlineKeyboardButton(text="📩 Barcha testlarni tashlash", callback_data=f"qrun:dump:{quiz_id}"),
+        ],
+    ]
+    if has_media:
+        rows.append([
+            InlineKeyboardButton(text="🔄 Shu manbadan keyingi yangi testlar 🎯", callback_data=f"qrun:next_batch:{quiz_id}")
+        ])
+    rows.extend([
+        [
+            InlineKeyboardButton(text="📄 PDF test varaqasi", callback_data=f"qexp:pdf:{quiz_id}"),
+            InlineKeyboardButton(text="📝 Word (.docx)", callback_data=f"qexp:docx:{quiz_id}"),
+        ],
+        [
+            InlineKeyboardButton(text="🤖 @QuizBot matni", callback_data=f"qexp:quizbot:{quiz_id}"),
+            InlineKeyboardButton(text="📤 Ulashish", switch_inline_query=f"quiz_{quiz_id}"),
+        ],
+        [
+            InlineKeyboardButton(text="🔙 Asosiy menyu", callback_data="menu:home"),
+        ],
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def get_quiz_finish_keyboard(quiz_id: str, has_wrong: bool = False) -> InlineKeyboardMarkup:
+def get_quiz_finish_keyboard(quiz_id: str, has_wrong: bool = False, has_media: bool = True) -> InlineKeyboardMarkup:
     """Test yakunlanganda natijalar klaviaturasi."""
     rows = [
         [InlineKeyboardButton(text="🔄 Qaytadan boshlash", callback_data=f"qrun:start:{quiz_id}")],
@@ -167,6 +172,10 @@ def get_quiz_finish_keyboard(quiz_id: str, has_wrong: bool = False) -> InlineKey
     if has_wrong:
         rows.append([
             InlineKeyboardButton(text="💡 Xatolar ustida ishlash 🎯", callback_data=f"qrun:retry_wrong:{quiz_id}")
+        ])
+    if has_media:
+        rows.append([
+            InlineKeyboardButton(text="🔄 Shu manbadan keyingi yangi testlar 🎯", callback_data=f"qrun:next_batch:{quiz_id}")
         ])
     rows.append([
         InlineKeyboardButton(text="📄 PDF test varaqasi", callback_data=f"qexp:pdf:{quiz_id}"),

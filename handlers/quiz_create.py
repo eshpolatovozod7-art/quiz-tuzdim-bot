@@ -131,6 +131,7 @@ async def process_topic_text(message: Message, state: FSMContext) -> None:
 async def process_custom_text(message: Message, state: FSMContext) -> None:
     text_content = message.text.strip()
     title = text_content[:30].replace("\n", " ").strip() + "..."
+    save_user_media(message.from_user.id, text_content=text_content)
     await start_quiz_wizard(message, state, text_content=text_content, label=title, user_id=message.from_user.id)
 
 
@@ -164,7 +165,7 @@ async def process_document_message(message: Message, bot: Bot, state: FSMContext
     ext = os.path.splitext(file_name)[1].lower()
     if ext in (".pdf", ".docx", ".doc", ".txt"):
         text_content = extract_text_from_file(file_bytes, file_name)
-        save_user_media(message.from_user.id, file_bytes, file_name, doc.mime_type or "application/pdf")
+        save_user_media(message.from_user.id, file_bytes, file_name, doc.mime_type or "application/pdf", text_content=text_content)
         clean_title = os.path.splitext(file_name)[0][:35]
         await start_quiz_wizard(
             message, state,
@@ -317,6 +318,7 @@ async def process_plain_text(message: Message, state: FSMContext) -> None:
     if len(text) > 120:
         # Uzun matn bo'lsa, konspekt deb hisoblaymiz
         title = text[:30].replace("\n", " ").strip() + "..."
+        save_user_media(message.from_user.id, text_content=text)
         await start_quiz_wizard(message, state, text_content=text, label=title, source_type="text", user_id=message.from_user.id)
     else:
         # Qisqa matn bo'lsa, mavzu deb hisoblaymiz

@@ -75,6 +75,109 @@ async def handle_start_quiz_run(callback: CallbackQuery, bot: Bot) -> None:
     await send_next_question(session_key, bot)
 
 
+@router.callback_query(F.data.startswith("qrun:next_batch:"))
+async def handle_next_batch_quiz(callback: CallbackQuery, bot: Bot) -> None:
+    """Shu fayl yoki mavzudan avvalgi savollarni takrorlamasdan keyingi to'plamni tuzish."""
+    quiz_id = callback.data.split(":")[2]
+    user_id = callback.from_user.id
+    chat_id = callback.message.chat.id if callback.message else user_id
+
+    quiz = await get_quiz(quiz_id)
+    if not quiz:
+        await callback.answer("Test topilmadi", show_alert=True)
+        return
+
+    await callback.answer("Keyingi yangi to'plam shakllantirilmoqda...")
+
+    source_title = quiz["title"]
+    options_count = quiz.get("options_count", 4)
+    timer_seconds = quiz.get("timer_seconds", 0)
+    difficulty = quiz.get("difficulty", "medium")
+    count = quiz.get("question_count", 5)
+
+    status_msg = await bot.send_message(
+        chat_id=chat_id,
+        text=f"⏳ <b>'{html.escape(source_title, quote=False)}' manbasi bo'yicha yangi, takrorlanmagan testlar tuzilmoqda...</b>\n\n"
+             f"<i>Avvalgi savollar chetlatilmoqda...</i>",
+        parse_mode="HTML",
+    )
+
+    from services.quiz_service import get_user_media, get_offline_quiz_questions
+    from database.db import get_user_used_questions, save_quiz
+    from keyboards.inline_keyboards import get_quiz_card_keyboard
+    from services.gemini_service import GeminiService
+    import uuid
+
+    gemini_service = GeminiService()
+    cached_media = get_user_media(user_id)
+    file_bytes = cached_media.get("bytes") if cached_media else None
+    file_mime = cached_media.get("mime") if cached_media else None
+    file_name = cached_media.get("name") if cached_media else None
+    text_content = cached_media.get("text") if cached_media else None
+
+    used_q = await get_user_used_questions(user_id, source_title)
+
+    questions = await gemini_service.generate_quiz(
+        topic=quiz.get("topic") or source_title,
+        text_content=text_content,
+        file_bytes=file_bytes,
+        file_mime=file_mime,
+        file_name=file_name,
+        count=count,
+        options_count=options_count,
+        difficulty=difficulty,
+        used_questions=used_q,
+    )
+
+    if not questions:
+        questions = get_offline_quiz_questions(
+            quiz.get("topic") or source_title,
+            count=count,
+            options_count=options_count,
+            used_questions=used_q,
+        )
+
+    try:
+        await status_msg.delete()
+    except Exception:
+        pass
+
+    if not questions:
+        await bot.send_message(chat_id=chat_id, text="❌ Yangi savollar tuzishda xatolik yuz berdi.")
+        return
+
+    new_quiz_id = uuid.uuid4().hex[:10]
+    await save_quiz(
+        quiz_id=new_quiz_id,
+        user_id=user_id,
+        title=source_title,
+        source_type=quiz.get("source_type", "topic"),
+        topic=quiz.get("topic", source_title),
+        questions=questions,
+        options_count=options_count,
+        timer_seconds=timer_seconds,
+        difficulty=difficulty,
+    )
+
+    bot_info = await bot.get_me()
+    timer_str = f"{timer_seconds}s" if timer_seconds > 0 else "Cheklovsiz"
+    escaped_title = html.escape(source_title, quote=False)
+    card_text = (
+        f"🎯 <b>\"{escaped_title}\" (Yangi to'plam) testi tayyor!</b>\n"
+        f"✦ • ──────────────────── • ✦\n\n"
+        f"📊 <b>Savollar soni:</b> {len(questions)} ta (Barchasi yangi)\n"
+        f"🔘 <b>Variantlar:</b> {options_count} ta\n"
+        f"⏱ <b>Taymer:</b> {timer_str}\n\n"
+        f"<i>Boshlash uchun quyidagi tugmani bosing:</i>"
+    )
+    await bot.send_message(
+        chat_id=chat_id,
+        text=card_text,
+        reply_markup=get_quiz_card_keyboard(new_quiz_id, bot_info.username or "quiz_tuzdimbot", has_media=True),
+        parse_mode="HTML",
+    )
+
+
 @router.callback_query(F.data.startswith("qrun:retry_wrong:"))
 async def handle_retry_wrong_questions(callback: CallbackQuery, bot: Bot) -> None:
     """Xatolar ustida ishlash: faqat xato belgilangan savollarni qayta topshirish."""

@@ -160,6 +160,7 @@ def get_offline_quiz_questions(
     topic: str,
     count: int = 5,
     options_count: int = 4,
+    used_questions: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Mavzuga mos oflayn zaxira savollarni olish va variantlarni aralashtirish."""
     lower = (topic or "").lower()
@@ -174,6 +175,17 @@ def get_offline_quiz_questions(
         cat = random.choice(list(LOCAL_QUIZ_BANK.keys()))
 
     pool = list(LOCAL_QUIZ_BANK.get(cat, LOCAL_QUIZ_BANK["umumiy"]))
+
+    # Avval ishlatilgan savollarni chetlatish
+    if used_questions:
+        filtered_pool = []
+        for q in pool:
+            q_clean = q.get("question", "").strip().lower()
+            if not any(uq in q_clean or q_clean in uq for uq in used_questions):
+                filtered_pool.append(q)
+        if filtered_pool:
+            pool = filtered_pool
+
     selected = pool if count >= len(pool) else random.sample(pool, min(count, len(pool)))
 
     formatted = []
@@ -208,14 +220,16 @@ _user_media_cache: dict[int, dict[str, Any]] = {}
 
 def save_user_media(
     user_id: int,
-    file_bytes: bytes,
-    file_name: str,
-    mime_type: str,
+    file_bytes: bytes | None = None,
+    file_name: str | None = None,
+    mime_type: str | None = None,
+    text_content: str | None = None,
 ) -> None:
     _user_media_cache[user_id] = {
         "bytes": file_bytes,
         "name": file_name,
         "mime": mime_type,
+        "text": text_content,
         "time": time.time(),
     }
 

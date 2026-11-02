@@ -232,11 +232,42 @@ async def get_user_stats(user_id: int) -> dict[str, Any]:
 
 
 async def get_user_used_questions(user_id: int, source_label: str) -> set[str]:
-    """Foydalanuvchi avval ishlagan savollar ro'yxatini olish."""
+    """Foydalanuvchining avvalgi testlarida shu fayl yoki mavzudan ishlatilgan barcha savollarini olish."""
+    import re
+    clean_label = re.sub(r"\.(pdf|docx|doc|txt|mp4|mkv|mov|avi|jpg|png|ogg|mp3)", "", source_label, flags=re.IGNORECASE).strip()
+    prefix_match = clean_label[:15] if len(clean_label) >= 4 else clean_label
+
+    used: set[str] = set()
     async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+
+        # 1. used_questions jadvalidan qidirish
         async with db.execute(
-            "SELECT question_text FROM used_questions WHERE user_id = ? AND source_label = ?",
-            (user_id, source_label),
+            "SELECT question_text FROM used_questions WHERE user_id = ? AND (source_label = ? OR source_label LIKE ?)",
+            (user_id, source_label, f"%{prefix_match}%"),
         ) as cursor:
             rows = await cursor.fetchall()
-            return {r[0] for r in rows if r[0]}
+            for r in rows:
+                txt = str(r[0] or "").strip()
+                clean = re.sub(r"^\[\d+/\d+\]\s*", "", txt).strip().lower()
+                if clean:
+                    used.add(clean)
+
+        # 2. quizzes jadvalidan ham kafolatlangan holda to'plash
+        async with db.execute(
+            "SELECT questions_json FROM quizzes WHERE user_id = ? AND (title = ? OR title LIKE ? OR topic LIKE ?) ORDER BY created_at DESC LIMIT 50",
+            (user_id, source_label, f"%{prefix_match}%", f"%{prefix_match}%"),
+        ) as cursor:
+            rows = await cursor.fetchall()
+            for r in rows:
+                try:
+                    q_list = json.loads(r["questions_json"])
+                    for item in q_list:
+                        q_txt = str(item.get("question", "")).strip()
+                        clean = re.sub(r"^\[\d+/\d+\]\s*", "", q_txt).strip().lower()
+                        if clean:
+                            used.add(clean)
+                except Exception:
+                    pass
+
+    return used

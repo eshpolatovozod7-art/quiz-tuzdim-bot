@@ -54,8 +54,14 @@ class GeminiService:
 
         avoid_clause = ""
         if used_questions:
-            sample_avoid = ", ".join(list(used_questions)[-35:])
-            avoid_clause = f"\n\nTALAB: Quyidagi savollar/tushunchalar avval ishlatilgan, ularni QAYTA TAKRORLAMA:\n{sample_avoid}"
+            sample_avoid = "\n".join(f"- {q}" for q in list(used_questions)[-50:])
+            avoid_clause = (
+                f"\n\n🚨 QAT'IY TALAB (SAVOLLAR TAKRORLANMASLIGI SHART):\n"
+                f"Foydalanuvchi ushbu manbadan avval quyidagi test savollarini ishlagan.\n"
+                f"Quyidagi savollar, ularning tushunchalari yoki aynan shu faktlarni QAYTA ISHLATISH QAT'IYAN TAQIQLANADI:\n"
+                f"{sample_avoid}\n\n"
+                f"Hujjatning boshqa darslari, keyingi sahifalari yoki matnning boshqa qismlaridan MUTLAQO YANGI, o'xshash bo'lmagan {count} ta savol tuzing!\n"
+            )
 
         sample_opts = ["Variant A", "Variant B", "Variant C", "Variant D"][:options_count]
         sample_opts_json = json.dumps(sample_opts, ensure_ascii=False)
@@ -71,8 +77,9 @@ class GeminiService:
             f"2. Variantlar: Aynan {options_count} ta variant bo'lsin. Har bir variant maksimal 95 belgi.\n"
             f"3. To'g'ri javob: Faqat bitta variant to'g'ri bo'lsin va 'correct_id' 0 dan {options_count - 1} gacha bo'lgan to'g'ri indeksni ko'rsatsin.\n"
             f"4. explanation (Izoh): To'g'ri javob nima uchun to'g'riligini va asosiy qoidani qisqa tushuntirib bering (maksimal 180 belgi).\n"
-            f"5. Barcha ma'lumotlar o'zbek tilida, imlo qoidalariga qat'iy rioya qilgan holda bo'lsin.\n"
-            f"6. Javobingiz FAQAT quyidagi JSON array formatida bo'lsin:\n"
+            f"5. BUTUN HUJJATNI QAMRAB OLING: Savollarni faqat hujjat boshidan emas, butun matn bo'ylab (boshi, o'rtasi, oxiri, turli darslar) aralash holda tanlang.\n"
+            f"6. Barcha ma'lumotlar o'zbek tilida, imlo qoidalariga qat'iy rioya qilgan holda bo'lsin.\n"
+            f"7. Javobingiz FAQAT quyidagi JSON array formatida bo'lsin:\n"
             "[\n"
             "  {\n"
             '    "question": "Savol matni?",\n'
@@ -165,6 +172,7 @@ class GeminiService:
                         else:
                             parsed = [parsed]
 
+                    import re
                     valid_questions = []
                     for idx, item in enumerate(parsed):
                         if not isinstance(item, dict):
@@ -175,6 +183,18 @@ class GeminiService:
                         expl = str(item.get("explanation", "")).strip()
 
                         if not q_text or len(opts) < 2:
+                            continue
+
+                        # Takrorlanishni tekshirish (Deduplication)
+                        clean_check = re.sub(r"^\[\d+/\d+\]\s*", "", q_text).strip().lower()
+                        is_dup = False
+                        if used_questions:
+                            for uq in used_questions:
+                                if clean_check == uq or (len(clean_check) > 20 and clean_check[:30] in uq) or (len(uq) > 20 and uq[:30] in clean_check):
+                                    is_dup = True
+                                    logger.info("Takroriy savol aniqlandi va o'chirildi: %s", q_text)
+                                    break
+                        if is_dup:
                             continue
 
                         # Variantlarni moslashtirish
@@ -195,8 +215,11 @@ class GeminiService:
                             "explanation": expl[:195],
                         })
 
-                    if valid_questions:
+                    if len(valid_questions) >= count:
                         return valid_questions[:count]
+                    elif valid_questions:
+                        # Agar qisman savollar to'plangan bo'lsa, qolganini zaxiradan to'ldirish
+                        return valid_questions
 
                 except Exception as err:
                     logger.warning("Gemini model %s da test tuzishda xatolik: %s", model_name, err)
