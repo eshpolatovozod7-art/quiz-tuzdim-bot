@@ -60,6 +60,7 @@ async def set_bot_commands(bot: Bot) -> None:
     """Bot buyruqlari menyusi."""
     commands = [
         BotCommand(command="start", description="Botni ishga tushirish va asosiy menyu"),
+        BotCommand(command="poll", description="Guruhga test (so'rovnoma)larni tashlash"),
         BotCommand(command="help", description="Qo'llanma va yordam"),
         BotCommand(command="stats", description="Shaxsiy testlar statistikasi"),
     ]

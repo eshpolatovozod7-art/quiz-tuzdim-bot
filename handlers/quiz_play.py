@@ -231,26 +231,22 @@ async def handle_retry_wrong_questions(callback: CallbackQuery, bot: Bot) -> Non
     await send_next_question(session_key, bot)
 
 
-@router.callback_query(F.data.startswith("qrun:dump:"))
-async def handle_dump_all_polls(callback: CallbackQuery, bot: Bot) -> None:
-    """Barcha testlarni birdaniga ketma-ket yuborish (Guruh yoki shaxsiy uchun)."""
-    quiz_id = callback.data.split(":")[2]
-    await callback.answer("Barcha savollar yuborilmoqda...")
-
-    quiz = await get_quiz(quiz_id)
-    if not quiz or not quiz.get("questions"):
+async def send_quiz_polls_to_chat(bot: Bot, chat_id: int, quiz: dict[str, Any]) -> None:
+    """Berilgan chatga (guruh yoki shaxsiy) barcha savollarni Telegram Quiz Poll sifatida yuborish."""
+    questions = quiz.get("questions", [])
+    if not questions:
+        await bot.send_message(chat_id=chat_id, text="⚠️ Test savollari topilmadi.")
         return
 
-    chat_id = callback.message.chat.id if callback.message else callback.from_user.id
-    questions = quiz["questions"]
     timer_seconds = quiz.get("timer_seconds", 0)
+    title = html.escape(quiz.get("title", "Viktorina"), quote=False)
 
     header_text = (
         "✦ • ──────────────────── • ✦\n"
         f"🎯 <b>VIKTORINA TEST ({len(questions)} TA SAVOL)</b>\n"
         "✦ • ──────────────────── • ✦\n\n"
-        f"📌 <b>Mavzu:</b> <i>{html.escape(quiz['title'], quote=False)}</i>\n\n"
-        "⚡️ <i>To'g'ri javoblarni tanlab yeching yoki do'stlaringizga ulashing:</i> 👇"
+        f"📌 <b>Mavzu:</b> <i>{title}</i>\n\n"
+        "⚡️ <i>To'g'ri javoblarni tanlab o'z bilimingizni sinab ko'ring:</i> 👇"
     )
     await bot.send_message(chat_id=chat_id, text=header_text, parse_mode="HTML")
 
@@ -275,15 +271,29 @@ async def handle_dump_all_polls(callback: CallbackQuery, bot: Bot) -> None:
 
         try:
             await bot.send_poll(**poll_kwargs)
-            await asyncio.sleep(0.3)
+            await asyncio.sleep(0.35)
         except Exception as e:
             logger.error("Poll yuborishda xatolik: %s", e)
 
     await bot.send_message(
         chat_id=chat_id,
-        text="✨ <b>Barcha test savollari yuborildi!</b>",
+        text="✨ <b>Barcha test savollari yuborildi! Omad!</b>",
         parse_mode="HTML",
     )
+
+
+@router.callback_query(F.data.startswith("qrun:dump:"))
+async def handle_dump_all_polls(callback: CallbackQuery, bot: Bot) -> None:
+    """Barcha testlarni birdaniga ketma-ket yuborish (Guruh yoki shaxsiy uchun)."""
+    quiz_id = callback.data.split(":")[2]
+    await callback.answer("Barcha savollar yuborilmoqda...")
+
+    quiz = await get_quiz(quiz_id)
+    if not quiz or not quiz.get("questions"):
+        return
+
+    chat_id = callback.message.chat.id if callback.message else callback.from_user.id
+    await send_quiz_polls_to_chat(bot, chat_id, quiz)
 
 
 async def send_next_question(session_key: int, bot: Bot) -> None:
@@ -478,10 +488,15 @@ async def finish_quiz(session_key: int, bot: Bot) -> None:
         f"<i>Quyidagi tugmalar orqali xatolar ustida ishlashingiz yoki test varaqasini yuklab olishingiz mumkin:</i>"
     )
 
+    bot_info = await bot.get_me()
     await bot.send_message(
         chat_id=chat_id,
         text=result_text,
-        reply_markup=get_quiz_finish_keyboard(quiz_id, has_wrong=has_wrong),
+        reply_markup=get_quiz_finish_keyboard(
+            quiz_id,
+            has_wrong=has_wrong,
+            bot_username=bot_info.username or "quiz_tuzdimbot",
+        ),
         parse_mode="HTML",
     )
 

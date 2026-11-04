@@ -138,9 +138,10 @@ def get_quiz_card_keyboard(quiz_id: str, bot_username: str = "quiz_tuzdimbot", h
     """Yangi tuzilgan quiz kartochkasi klaviaturasi."""
     rows = [
         [
-            InlineKeyboardButton(text="▶️ Testni boshlash (Interaktiv)", callback_data=f"qrun:start:{quiz_id}"),
+            InlineKeyboardButton(text="▶️ O'zim yechish (Interaktiv)", callback_data=f"qrun:start:{quiz_id}"),
         ],
         [
+            InlineKeyboardButton(text="👥 Guruhga tashlash (Quiz Poll)", url=f"https://t.me/{bot_username}?startgroup=poll_{quiz_id}"),
             InlineKeyboardButton(text="📩 Barcha testlarni tashlash", callback_data=f"qrun:dump:{quiz_id}"),
         ],
     ]
@@ -164,7 +165,12 @@ def get_quiz_card_keyboard(quiz_id: str, bot_username: str = "quiz_tuzdimbot", h
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def get_quiz_finish_keyboard(quiz_id: str, has_wrong: bool = False, has_media: bool = True) -> InlineKeyboardMarkup:
+def get_quiz_finish_keyboard(
+    quiz_id: str,
+    has_wrong: bool = False,
+    has_media: bool = True,
+    bot_username: str = "quiz_tuzdimbot",
+) -> InlineKeyboardMarkup:
     """Test yakunlanganda natijalar klaviaturasi."""
     rows = [
         [InlineKeyboardButton(text="🔄 Qaytadan boshlash", callback_data=f"qrun:start:{quiz_id}")],
@@ -177,6 +183,10 @@ def get_quiz_finish_keyboard(quiz_id: str, has_wrong: bool = False, has_media: b
         rows.append([
             InlineKeyboardButton(text="🔄 Shu manbadan keyingi yangi testlar 🎯", callback_data=f"qrun:next_batch:{quiz_id}")
         ])
+    rows.append([
+        InlineKeyboardButton(text="👥 Guruhga tashlash (Quiz Poll)", url=f"https://t.me/{bot_username}?startgroup=poll_{quiz_id}"),
+        InlineKeyboardButton(text="📩 Barcha testlarni tashlash", callback_data=f"qrun:dump:{quiz_id}"),
+    ])
     rows.append([
         InlineKeyboardButton(text="📄 PDF test varaqasi", callback_data=f"qexp:pdf:{quiz_id}"),
         InlineKeyboardButton(text="📝 Word (.docx)", callback_data=f"qexp:docx:{quiz_id}"),

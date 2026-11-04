@@ -1,12 +1,13 @@
 import html
 import time
 from aiogram import Router, F, Bot
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import CommandStart, Command, CommandObject
 from aiogram.fsm.context import FSMContext
 
 from database.db import register_or_update_user, get_user_stats, get_user_quizzes, get_quiz
 from keyboards.inline_keyboards import get_main_menu_keyboard, get_quiz_card_keyboard
+from handlers.quiz_play import send_quiz_polls_to_chat
 
 router = Router()
 
@@ -19,11 +20,17 @@ async def handle_start(message: Message, command: CommandObject, bot: Bot, state
     if user:
         await register_or_update_user(user.id, user.username, user.first_name)
 
-    # Deep link orqali test ochilgan bo'lsa: /start quiz_abc123
-    if command.args and (command.args.startswith("quiz_") or command.args.startswith("q_")):
-        quiz_id = command.args.replace("quiz_", "").replace("q_", "").strip()
+    # Deep link orqali test ochilgan bo'lsa: /start quiz_abc123 yoki /start poll_abc123
+    if command.args and (command.args.startswith("quiz_") or command.args.startswith("q_") or command.args.startswith("poll_")):
+        is_direct_poll = command.args.startswith("poll_")
+        quiz_id = command.args.replace("quiz_", "").replace("q_", "").replace("poll_", "").strip()
         quiz = await get_quiz(quiz_id)
         if quiz:
+            # Agar startgroup=poll_... orqali yoki guruh ichida chaqirilgan bo'lsa, to'g'ridan-to'g'ri so'rovnomalarni tashlash:
+            if is_direct_poll or message.chat.type in ["group", "supergroup"]:
+                await send_quiz_polls_to_chat(bot, message.chat.id, quiz)
+                return
+
             bot_info = await bot.get_me()
             title = html.escape(quiz["title"], quote=False)
             count = quiz["question_count"]
@@ -147,3 +154,103 @@ async def handle_history(callback: CallbackQuery, bot: Bot) -> None:
     text += "<i>Istalgan test linkini bosib qayta yechishingiz yoki ulashishingiz mumkin!</i>"
     if callback.message:
         await callback.message.edit_text(text, reply_markup=get_main_menu_keyboard(), parse_mode="HTML")
+
+
+@router.message(Command("poll", "quiz"))
+async def handle_poll_command(message: Message, command: CommandObject, bot: Bot) -> None:
+    """Guruhda yoki shaxsiy chatda testlarni so'rovnoma (Quiz Poll) ko'rinishida chiqarish."""
+    if command.args:
+        quiz_id = command.args.replace("quiz_", "").replace("poll_", "").replace("q_", "").strip()
+        quiz = await get_quiz(quiz_id)
+        if quiz:
+            await send_quiz_polls_to_chat(bot, message.chat.id, quiz)
+            return
+        else:
+            await message.answer("⚠️ Ushbu ID bo'yicha test topilmadi.")
+            return
+
+    user = message.from_user
+    if not user:
+        return
+
+    quizzes = await get_user_quizzes(user.id, limit=5)
+    bot_info = await bot.get_me()
+
+    if not quizzes:
+        await message.answer(
+            f"⚠️ Siz hali test tuzmagansiz!\n\n"
+            f"Avval shaxsiy chatda @{bot_info.username} ga kirib test tuzing, so'ngra bu yerda <code>/poll</code> orqali guruhga tashlashingiz mumkin.",
+            parse_mode="HTML",
+        )
+        return
+
+    keyboard_rows = []
+    for q in quizzes:
+        q_title = q["title"][:25]
+        q_count = q["question_count"]
+        keyboard_rows.append([
+            InlineKeyboardButton(
+                text=f"🎯 {q_title} ({q_count} ta)",
+                callback_data=f"gpoll:dump:{q['quiz_id']}",
+            )
+        ])
+    keyboard_rows.append([
+        InlineKeyboardButton(text="❌ Bekor qilish", callback_data="gpoll:cancel")
+    ])
+
+    kb = InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
+    await message.answer(
+        f"📋 <b>{html.escape(user.first_name, quote=False)}</b>, qaysi testingizni guruhga tashlamoqchisiz? Tanlang: 👇",
+        reply_markup=kb,
+        parse_mode="HTML",
+    )
+
+
+@router.callback_query(F.data.startswith("gpoll:dump:"))
+async def handle_gpoll_dump_callback(callback: CallbackQuery, bot: Bot) -> None:
+    """Guruhdagi /poll menyusidan tanlangan testni so'rovnoma qilib tashlash."""
+    quiz_id = callback.data.split(":")[2]
+    quiz = await get_quiz(quiz_id)
+    if not quiz:
+        await callback.answer("Test topilmadi", show_alert=True)
+        return
+
+    await callback.answer("Savollar yuborilmoqda...")
+    if callback.message:
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        await send_quiz_polls_to_chat(bot, callback.message.chat.id, quiz)
+
+
+@router.callback_query(F.data == "gpoll:cancel")
+async def handle_gpoll_cancel_callback(callback: CallbackQuery) -> None:
+    """Guruhdagi /poll menyusini bekor qilish."""
+    if callback.message:
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+    await callback.answer("Bekor qilindi")
+
+
+@router.message(F.new_chat_members)
+async def handle_new_chat_members(message: Message, bot: Bot) -> None:
+    """Bot guruhga qo'shilganda yo'riqnoma berish."""
+    if not message.new_chat_members:
+        return
+    bot_info = await bot.get_me()
+    for new_member in message.new_chat_members:
+        if new_member.id == bot_info.id:
+            text = (
+                "👋 <b>Assalomu alaykum!</b>\n\n"
+                "🎯 Men <b>Quiz Tuzdim Bot</b>man. Bu guruhda o'quvchilar va a'zolar uchun qiziqarli viktorinalar (so'rovnomalar) tashlab bera olaman.\n\n"
+                "📌 <b>Guruhda qanday ishlatiladi?</b>\n"
+                f"1. Shaxsiy chatda @{bot_info.username} ga kirib xohlagan mavzuingizda test tuzing.\n"
+                "2. Guruhda <code>/poll</code> buyrug'ini yuboring va testingizni tanlang.\n"
+                "3. Bot barcha savollarni to'g'ridan-to'g'ri guruhga <b>Quiz Poll (Viktorina)</b> qilib tashlab beradi!\n\n"
+                "<i>Guruh a'zolari hech qanday havolasiz o'z javoblarini tanlab bellashishlari mumkin!</i> 🚀"
+            )
+            await message.answer(text, parse_mode="HTML")
+            break
