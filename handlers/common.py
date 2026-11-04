@@ -7,7 +7,7 @@ from aiogram.fsm.context import FSMContext
 
 from database.db import register_or_update_user, get_user_stats, get_user_quizzes, get_quiz, get_group_leaderboard
 from keyboards.inline_keyboards import get_main_menu_keyboard, get_quiz_card_keyboard, get_back_to_menu_keyboard
-from handlers.quiz_play import send_quiz_polls_to_chat, send_group_quiz_lobby
+from handlers.quiz_play import send_quiz_polls_to_chat, send_group_quiz_lobby, format_quiz_ready_text
 
 router = Router()
 
@@ -34,23 +34,10 @@ async def handle_start(message: Message, command: CommandObject, bot: Bot, state
                 await send_quiz_polls_to_chat(bot, message.chat.id, quiz)
                 return
 
-            bot_info = await bot.get_me()
-            title = html.escape(quiz["title"], quote=False)
-            count = quiz["question_count"]
-            timer = f"{quiz['timer_seconds']}s" if quiz.get("timer_seconds", 0) > 0 else "Cheklovsiz"
-            diff = {"easy": "Oson", "medium": "O'rta", "hard": "Qiyin", "olympiad": "Olimpiada"}.get(quiz.get("difficulty", "medium"), "O'rta")
-
-            text = (
-                f"🎲 <b>\"{title}\" testi</b>\n\n"
-                f"📊 <b>Savollar soni:</b> {count} ta\n"
-                f"🔘 <b>Variantlar:</b> {quiz.get('options_count', 4)} ta\n"
-                f"⏱ <b>Taymer:</b> {timer}\n"
-                f"🎚 <b>Daraja:</b> {diff}\n\n"
-                f"<i>Testni boshlash uchun quyidagi tugmani bosing:</i>"
-            )
+            text = format_quiz_ready_text(quiz)
             await message.answer(
                 text=text,
-                reply_markup=get_quiz_card_keyboard(quiz_id, bot_info.username or "quiz_tuzdimbot"),
+                reply_markup=get_quiz_card_keyboard(quiz_id),
                 parse_mode="HTML",
             )
             return
@@ -226,24 +213,11 @@ async def handle_open_saved_quiz(callback: CallbackQuery, bot: Bot) -> None:
         return
 
     await callback.answer()
-    bot_info = await bot.get_me()
-    title = html.escape(quiz["title"], quote=False)
-    count = quiz["question_count"]
-    tm = quiz.get("timer_seconds", 0)
-    timer = f"{tm}s" if tm > 0 else "Cheklovsiz"
-    diff = {"easy": "Oson", "medium": "O'rta", "hard": "Qiyin", "olympiad": "Olimpiada"}.get(quiz.get("difficulty", "medium"), "O'rta")
-
-    card_text = (
-        f"🎯 <b>\"{title}\" testi</b>\n"
-        f"✦ • ──────────────────── • ✦\n\n"
-        f"📊 <b>Savollar:</b> {count} ta | ⏱ <b>Taymer:</b> {timer}\n"
-        f"🔘 <b>Variantlar:</b> {quiz.get('options_count', 4)} ta | 🎚 <b>Daraja:</b> {diff}\n\n"
-        f"<i>Testni boshlash uchun quyidagi tugmani bosing:</i>"
-    )
+    card_text = format_quiz_ready_text(quiz)
     if callback.message:
         await callback.message.edit_text(
             text=card_text,
-            reply_markup=get_quiz_card_keyboard(quiz_id, bot_info.username or "quiz_tuzdimbot"),
+            reply_markup=get_quiz_card_keyboard(quiz_id),
             parse_mode="HTML",
         )
 

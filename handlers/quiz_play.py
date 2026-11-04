@@ -4,7 +4,15 @@ import logging
 import time
 from typing import Any
 from aiogram import Router, F, Bot
-from aiogram.types import CallbackQuery, PollAnswer, InlineKeyboardMarkup, InlineKeyboardButton, BufferedInputFile
+from aiogram.filters import Command
+from aiogram.types import (
+    CallbackQuery,
+    Message,
+    PollAnswer,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+    BufferedInputFile,
+)
 
 from database.db import get_quiz, save_attempt, record_group_answer, update_quiz_timer
 from keyboards.inline_keyboards import get_quiz_finish_keyboard, get_change_timer_keyboard, get_quiz_card_keyboard
@@ -23,6 +31,60 @@ _group_poll_map: dict[str, tuple] = {}
 _group_active_quizzes: dict[int, dict[str, Any]] = {}
 
 
+def format_quiz_ready_text(quiz: dict[str, Any]) -> str:
+    """Telegram @QuizBot formatidagi test tayyorgarlik xabari (Image 1 dagi kabi)."""
+    title = html.escape(quiz.get("title", "Test"), quote=False)
+    questions = quiz.get("questions", [])
+    count = quiz.get("question_count", len(questions))
+    tm = quiz.get("timer_seconds", 15)
+    tm_str = f"{tm} soniya" if (tm and tm > 0) else "15 soniya"
+
+    return (
+        f"🎲 <b>“{title}” testiga tayyorlaning</b>\n\n"
+        f"🗡 {count} ta savol\n"
+        f"⏱ Har bir savol uchun {tm_str}\n"
+        f"📰 Ovozlar test egasiga ko‘rinadigan bo‘ladi\n\n"
+        f"🏁 Tayyor bo‘lganingizda quyidagi tugmani bosing.\n"
+        f"Uni to‘xtatish uchun /stop buyrug‘ini yuboring."
+    )
+
+
+@router.message(Command("stop"))
+async def handle_stop_command(message: Message, bot: Bot) -> None:
+    """Testni to'xtatish (/stop)."""
+    chat_id = message.chat.id
+
+    # Guruhda bo'lsa
+    if message.chat.type in ["group", "supergroup"]:
+        active = _group_active_quizzes.get(chat_id)
+        if active:
+            active["cancelled"] = True
+            active["is_running"] = False
+            task = active.get("task")
+            if task and not task.done():
+                task.cancel()
+            _group_active_quizzes.pop(chat_id, None)
+            await message.answer("🛑 <b>Test to'xtatildi.</b>", parse_mode="HTML")
+            return
+        await message.answer("ℹ️ Hozirda guruhda faol test mavjud emas.")
+        return
+
+    # Shaxsiy chatda bo'lsa
+    session_key = chat_id
+    if session_key in _active_sessions:
+        session = _active_sessions.pop(session_key, None)
+        if session:
+            task = session.get("timeout_task")
+            if task and not task.done():
+                task.cancel()
+            pid = session.get("current_poll_id")
+            if pid and pid in _poll_map:
+                _poll_map.pop(pid, None)
+        await message.answer("🛑 <b>Test to'xtatildi.</b>", parse_mode="HTML")
+    else:
+        await message.answer("ℹ️ Hozirda faol test mavjud emas.")
+
+
 @router.callback_query(F.data.startswith("qrun:start:"))
 async def handle_start_quiz_run(callback: CallbackQuery, bot: Bot) -> None:
     """Interaktiv testni boshlash."""
@@ -31,13 +93,13 @@ async def handle_start_quiz_run(callback: CallbackQuery, bot: Bot) -> None:
     chat_id = callback.message.chat.id if callback.message else user_id
     session_key = chat_id
 
-    await callback.answer("Test boshlanmoqda...")
-
     quiz = await get_quiz(quiz_id)
     if not quiz or not quiz.get("questions"):
         if callback.message:
             await callback.message.answer("⚠️ Kechirasiz, ushbu test topilmadi yoki o'chirilgan.")
         return
+
+    await callback.answer("Boshlanmoqda...")
 
     # Eski sessiya bo'lsa tozalash
     old_session = _active_sessions.get(session_key)
@@ -68,15 +130,27 @@ async def handle_start_quiz_run(callback: CallbackQuery, bot: Bot) -> None:
         "lock": asyncio.Lock(),
     }
 
-    timer_info = f"⏱ Har bir savolga {timer_seconds} soniya.\n" if timer_seconds > 0 else ""
-    escaped_title = html.escape(quiz["title"], quote=False)
+    title_clean = html.escape(quiz.get("title", "Test"), quote=False)
+    for count in [3, 2, 1]:
+        try:
+            await callback.message.edit_text(
+                f"⏳ <b>“{title_clean}”</b>\n\n"
+                f"Tayyorlaning: <b>{count}...</b> 🔔",
+                parse_mode="HTML"
+            )
+            await asyncio.sleep(1.0)
+        except Exception:
+            pass
 
-    await bot.send_message(
-        chat_id=chat_id,
-        text=f"🏁 <b>\"{escaped_title}\" testi boshlanmoqda!</b>\n{timer_info}<i>1-savol kelmoqda, diqqat bilan o'qing...</i> 👇",
-        parse_mode="HTML",
-    )
-    await asyncio.sleep(0.5)
+    try:
+        await callback.message.edit_text(
+            "🚀 <b>Ketdik! 1-savol kelmoqda...</b>",
+            parse_mode="HTML"
+        )
+        await asyncio.sleep(0.5)
+    except Exception:
+        pass
+
     await send_next_question(session_key, bot)
 
 
@@ -164,21 +238,17 @@ async def handle_next_batch_quiz(callback: CallbackQuery, bot: Bot) -> None:
         difficulty=difficulty,
     )
 
-    bot_info = await bot.get_me()
-    timer_str = f"{timer_seconds}s" if timer_seconds > 0 else "Cheklovsiz"
-    escaped_title = html.escape(source_title, quote=False)
-    card_text = (
-        f"🎯 <b>\"{escaped_title}\" (Yangi to'plam) testi tayyor!</b>\n"
-        f"✦ • ──────────────────── • ✦\n\n"
-        f"📊 <b>Savollar soni:</b> {len(questions)} ta (Barchasi yangi)\n"
-        f"🔘 <b>Variantlar:</b> {options_count} ta\n"
-        f"⏱ <b>Taymer:</b> {timer_str}\n\n"
-        f"<i>Boshlash uchun quyidagi tugmani bosing:</i>"
-    )
+    new_quiz_obj = {
+        "title": f"{source_title} (Yangi to'plam)",
+        "questions": questions,
+        "question_count": len(questions),
+        "timer_seconds": timer_seconds,
+    }
+    card_text = format_quiz_ready_text(new_quiz_obj)
     await bot.send_message(
         chat_id=chat_id,
         text=card_text,
-        reply_markup=get_quiz_card_keyboard(new_quiz_id, bot_info.username or "quiz_tuzdimbot", has_media=True),
+        reply_markup=get_quiz_card_keyboard(new_quiz_id),
         parse_mode="HTML",
     )
 
@@ -320,32 +390,10 @@ async def handle_dump_all_polls(callback: CallbackQuery, bot: Bot) -> None:
 
 
 async def send_group_quiz_lobby(bot: Bot, chat_id: int, quiz: dict[str, Any]) -> None:
-    """Guruhga @QuizBot kabi chiroyli viktorina start kartasini yuborish."""
+    """Guruhga @QuizBot kabi yagona 'Men tayyorman!' kartasini yuborish."""
     quiz_id = quiz["quiz_id"]
-    title = html.escape(quiz.get("title", "Viktorina"), quote=False)
-    questions = quiz.get("questions", [])
-    count = quiz.get("question_count", len(questions))
-    tm = quiz.get("timer_seconds", 30)
-    timer_str = f"{tm} soniya" if (tm and tm > 0) else "30 soniya"
-
-    text = (
-        f"🎲 <b>«{title}» viktorinasi</b>\n\n"
-        f"📊 <b>Savollar soni:</b> {count} ta\n"
-        f"⏱ <b>Har bir savolga:</b> {timer_str}\n\n"
-        f"👥 <i>Guruh a'zolari bir vaqtda musobaqalashishi mumkin. "
-        f"Savollar bittalab, taymer bilan chiqadi va yakunda eng yaxshi bilimdonlar e'lon qilinadi!</i> 🏆\n\n"
-        f"<i>Boshlash uchun quyidagi tugmani bosing:</i>"
-    )
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="▶️ Ushbu guruhda boshlash", callback_data=f"qgrp:start:{quiz_id}")
-            ],
-            [
-                InlineKeyboardButton(text="❌ Bekor qilish", callback_data=f"qgrp:cancel:{quiz_id}")
-            ]
-        ]
-    )
+    text = format_quiz_ready_text(quiz)
+    kb = get_quiz_card_keyboard(quiz_id, is_group=True)
     await bot.send_message(chat_id=chat_id, text=text, reply_markup=kb, parse_mode="HTML")
 
 
@@ -972,24 +1020,11 @@ async def handle_save_new_timer(callback: CallbackQuery, bot: Bot) -> None:
     if not quiz:
         return
 
-    bot_info = await bot.get_me()
-    clean_title = html.escape(quiz.get("title", "Test"), quote=False)
-    diff = {"easy": "Oson", "medium": "O'rta", "hard": "Qiyin", "olympiad": "Olimpiada"}.get(quiz.get("difficulty", "medium"), "O'rta")
-    count = quiz.get("question_count", len(quiz.get("questions", [])))
-
-    card_text = (
-        f"🎯 <b>\"{clean_title}\" testi (Taymer yangilandi ✅)</b>\n"
-        f"✦ • ──────────────────── • ✦\n\n"
-        f"📊 <b>Savollar soni:</b> {count} ta\n"
-        f"🔘 <b>Variantlar:</b> {quiz.get('options_count', 4)} ta\n"
-        f"⏱ <b>Taymer:</b> <b>{tm_str}</b> ⚡️\n"
-        f"🎚 <b>Qiyinlik:</b> {diff}\n\n"
-        f"💡 <i>Ushbu testni yangilangan taymer bilan yechishingiz, chop etish uchun PDF qilib yuklab olishingiz yoki guruhlarga ulashishingiz mumkin:</i>"
-    )
+    card_text = format_quiz_ready_text(quiz)
     if callback.message:
         await callback.message.edit_text(
             card_text,
-            reply_markup=get_quiz_card_keyboard(quiz_id, bot_info.username or "quiz_tuzdimbot"),
+            reply_markup=get_quiz_card_keyboard(quiz_id),
             parse_mode="HTML",
         )
 
@@ -1002,26 +1037,11 @@ async def handle_cancel_timer_change(callback: CallbackQuery, bot: Bot) -> None:
     if not quiz:
         return
 
-    bot_info = await bot.get_me()
-    clean_title = html.escape(quiz.get("title", "Test"), quote=False)
-    tm = quiz.get("timer_seconds", 0)
-    tm_str = "Cheklovsiz" if tm == 0 else f"{tm} soniya"
-    diff = {"easy": "Oson", "medium": "O'rta", "hard": "Qiyin", "olympiad": "Olimpiada"}.get(quiz.get("difficulty", "medium"), "O'rta")
-    count = quiz.get("question_count", len(quiz.get("questions", [])))
-
-    card_text = (
-        f"🎯 <b>\"{clean_title}\" testi</b>\n"
-        f"✦ • ──────────────────── • ✦\n\n"
-        f"📊 <b>Savollar soni:</b> {count} ta\n"
-        f"🔘 <b>Variantlar:</b> {quiz.get('options_count', 4)} ta\n"
-        f"⏱ <b>Taymer:</b> {tm_str}\n"
-        f"🎚 <b>Qiyinlik:</b> {diff}\n\n"
-        f"💡 <i>Ushbu testni boshlashingiz yoki guruhlarga ulashishingiz mumkin:</i>"
-    )
+    card_text = format_quiz_ready_text(quiz)
     if callback.message:
         await callback.message.edit_text(
             card_text,
-            reply_markup=get_quiz_card_keyboard(quiz_id, bot_info.username or "quiz_tuzdimbot"),
+            reply_markup=get_quiz_card_keyboard(quiz_id),
             parse_mode="HTML",
         )
     await callback.answer()

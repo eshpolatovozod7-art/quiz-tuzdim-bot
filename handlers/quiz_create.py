@@ -629,19 +629,18 @@ async def handle_qcfg_timer(callback: CallbackQuery, bot: Bot, state: FSMContext
         except Exception:
             pass
 
-    bot_info = await bot.get_me()
-    escaped_title = html.escape(clean_title, quote=False)
-    card_text = (
-        f"🎯 <b>\"{escaped_title}\" testi tayyor!</b>\n"
-        f"✦ • ──────────────────── • ✦\n\n"
-        f"📊 <b>Savollar:</b> {len(questions)} ta | ⏱ <b>Taymer:</b> {timer_str}\n"
-        f"🔘 <b>Variantlar:</b> {opts} ta | 🎚 <b>Qiyinlik:</b> {diff.capitalize()}\n\n"
-        f"<i>Testni boshlash uchun quyidagi tugmani bosing:</i>"
-    )
+    from handlers.quiz_play import format_quiz_ready_text
+    quiz_obj = {
+        "title": clean_title,
+        "questions": questions,
+        "question_count": len(questions),
+        "timer_seconds": tm,
+    }
+    card_text = format_quiz_ready_text(quiz_obj)
 
     await bot.send_message(
         chat_id=callback.message.chat.id,
         text=card_text,
-        reply_markup=get_quiz_card_keyboard(quiz_id, bot_info.username or "quiz_tuzdimbot"),
+        reply_markup=get_quiz_card_keyboard(quiz_id),
         parse_mode="HTML",
     )
