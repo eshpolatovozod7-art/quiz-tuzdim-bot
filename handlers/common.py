@@ -7,7 +7,7 @@ from aiogram.fsm.context import FSMContext
 
 from database.db import register_or_update_user, get_user_stats, get_user_quizzes, get_quiz, get_group_leaderboard
 from keyboards.inline_keyboards import get_main_menu_keyboard, get_quiz_card_keyboard
-from handlers.quiz_play import send_quiz_polls_to_chat
+from handlers.quiz_play import send_quiz_polls_to_chat, send_group_quiz_lobby
 
 router = Router()
 
@@ -26,8 +26,11 @@ async def handle_start(message: Message, command: CommandObject, bot: Bot, state
         quiz_id = command.args.replace("quiz_", "").replace("q_", "").replace("poll_", "").strip()
         quiz = await get_quiz(quiz_id)
         if quiz:
-            # Agar startgroup=poll_... orqali yoki guruh ichida chaqirilgan bo'lsa, to'g'ridan-to'g'ri so'rovnomalarni tashlash:
-            if is_direct_poll or message.chat.type in ["group", "supergroup"]:
+            # Agar startgroup=poll_... orqali yoki guruh ichida chaqirilgan bo'lsa:
+            if message.chat.type in ["group", "supergroup"]:
+                await send_group_quiz_lobby(bot, message.chat.id, quiz)
+                return
+            elif is_direct_poll:
                 await send_quiz_polls_to_chat(bot, message.chat.id, quiz)
                 return
 
@@ -43,7 +46,7 @@ async def handle_start(message: Message, command: CommandObject, bot: Bot, state
                 f"🔘 <b>Variantlar:</b> {quiz.get('options_count', 4)} ta\n"
                 f"⏱ <b>Taymer:</b> {timer}\n"
                 f"🎚 <b>Daraja:</b> {diff}\n\n"
-                f"<i>Quyidagi tugmalar orqali testni boshlashingiz yoki yuklab olishingiz mumkin:</i>"
+                f"<i>Testni boshlash uchun quyidagi tugmani bosing:</i>"
             )
             await message.answer(
                 text=text,
@@ -240,11 +243,9 @@ async def handle_open_saved_quiz(callback: CallbackQuery, bot: Bot) -> None:
     card_text = (
         f"🎯 <b>\"{title}\" testi</b>\n"
         f"✦ • ──────────────────── • ✦\n\n"
-        f"📊 <b>Savollar soni:</b> {count} ta\n"
-        f"🔘 <b>Variantlar:</b> {quiz.get('options_count', 4)} ta\n"
-        f"⏱ <b>Taymer:</b> {timer}\n"
-        f"🎚 <b>Daraja:</b> {diff}\n\n"
-        f"<i>Quyidagi tugmalar orqali testni boshlashingiz, taymerini o'zgartirishingiz yoki yuklab olishingiz mumkin:</i>"
+        f"📊 <b>Savollar:</b> {count} ta | ⏱ <b>Taymer:</b> {timer}\n"
+        f"🔘 <b>Variantlar:</b> {quiz.get('options_count', 4)} ta | 🎚 <b>Daraja:</b> {diff}\n\n"
+        f"<i>Testni boshlash uchun quyidagi tugmani bosing:</i>"
     )
     if callback.message:
         await callback.message.edit_text(
@@ -261,7 +262,10 @@ async def handle_poll_command(message: Message, command: CommandObject, bot: Bot
         quiz_id = command.args.replace("quiz_", "").replace("poll_", "").replace("q_", "").strip()
         quiz = await get_quiz(quiz_id)
         if quiz:
-            await send_quiz_polls_to_chat(bot, message.chat.id, quiz)
+            if message.chat.type in ["group", "supergroup"]:
+                await send_group_quiz_lobby(bot, message.chat.id, quiz)
+            else:
+                await send_quiz_polls_to_chat(bot, message.chat.id, quiz)
             return
         else:
             await message.answer("⚠️ Ushbu ID bo'yicha test topilmadi.")
@@ -313,13 +317,16 @@ async def handle_gpoll_dump_callback(callback: CallbackQuery, bot: Bot) -> None:
         await callback.answer("Test topilmadi", show_alert=True)
         return
 
-    await callback.answer("Savollar yuborilmoqda...")
+    await callback.answer("Tanlandi...")
     if callback.message:
         try:
             await callback.message.delete()
         except Exception:
             pass
-        await send_quiz_polls_to_chat(bot, callback.message.chat.id, quiz)
+        if callback.message.chat.type in ["group", "supergroup"]:
+            await send_group_quiz_lobby(bot, callback.message.chat.id, quiz)
+        else:
+            await send_quiz_polls_to_chat(bot, callback.message.chat.id, quiz)
 
 
 @router.callback_query(F.data == "gpoll:cancel")

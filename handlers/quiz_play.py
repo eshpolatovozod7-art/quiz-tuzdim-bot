@@ -17,8 +17,10 @@ router = Router()
 _active_sessions: dict[int, dict[str, Any]] = {}
 # poll_id -> session_key
 _poll_map: dict[str, int] = {}
-# Standalone / Guruh pollari: poll_id -> (chat_id, quiz_id, correct_id)
-_group_poll_map: dict[str, tuple[int, str, int]] = {}
+# Standalone / Guruh pollari: poll_id -> (chat_id, quiz_id, correct_id, start_time)
+_group_poll_map: dict[str, tuple] = {}
+# Faol guruh viktorinalari: chat_id -> dict
+_group_active_quizzes: dict[int, dict[str, Any]] = {}
 
 
 @router.callback_query(F.data.startswith("qrun:start:"))
@@ -317,6 +319,317 @@ async def handle_dump_all_polls(callback: CallbackQuery, bot: Bot) -> None:
     await send_quiz_polls_to_chat(bot, chat_id, quiz)
 
 
+async def send_group_quiz_lobby(bot: Bot, chat_id: int, quiz: dict[str, Any]) -> None:
+    """Guruhga @QuizBot kabi chiroyli viktorina start kartasini yuborish."""
+    quiz_id = quiz["quiz_id"]
+    title = html.escape(quiz.get("title", "Viktorina"), quote=False)
+    questions = quiz.get("questions", [])
+    count = quiz.get("question_count", len(questions))
+    tm = quiz.get("timer_seconds", 30)
+    timer_str = f"{tm} soniya" if (tm and tm > 0) else "30 soniya"
+
+    text = (
+        f"🎲 <b>«{title}» viktorinasi</b>\n\n"
+        f"📊 <b>Savollar soni:</b> {count} ta\n"
+        f"⏱ <b>Har bir savolga:</b> {timer_str}\n\n"
+        f"👥 <i>Guruh a'zolari bir vaqtda musobaqalashishi mumkin. "
+        f"Savollar bittalab, taymer bilan chiqadi va yakunda eng yaxshi bilimdonlar e'lon qilinadi!</i> 🏆\n\n"
+        f"<i>Boshlash uchun quyidagi tugmani bosing:</i>"
+    )
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="▶️ Ushbu guruhda boshlash", callback_data=f"qgrp:start:{quiz_id}")
+            ],
+            [
+                InlineKeyboardButton(text="❌ Bekor qilish", callback_data=f"qgrp:cancel:{quiz_id}")
+            ]
+        ]
+    )
+    await bot.send_message(chat_id=chat_id, text=text, reply_markup=kb, parse_mode="HTML")
+
+
+@router.callback_query(F.data.startswith("qgrp:start:"))
+async def handle_group_quiz_start(callback: CallbackQuery, bot: Bot) -> None:
+    """Guruhda QuizBot kabi testni boshlash va teskari hisobni (countdown) yoqish."""
+    chat_id = callback.message.chat.id
+    quiz_id = callback.data.split(":")[2]
+    user = callback.from_user
+
+    active = _group_active_quizzes.get(chat_id)
+    if active and active.get("is_running"):
+        await callback.answer("⚠️ Ushbu guruhda allaqachon viktorina ketmoqda!", show_alert=True)
+        return
+
+    quiz = await get_quiz(quiz_id)
+    if not quiz or not quiz.get("questions"):
+        await callback.answer("⚠️ Kechirasiz, ushbu test topilmadi.", show_alert=True)
+        return
+
+    await callback.answer("Viktorina boshlanmoqda! 🏁")
+
+    title_clean = html.escape(quiz.get("title", "Viktorina"), quote=False)
+    # 3... 2... 1... Countdown
+    for count in [3, 2, 1]:
+        try:
+            await callback.message.edit_text(
+                f"⏳ <b>«{title_clean}» viktorinasi boshlanmoqda!</b>\n\n"
+                f"Tayyorlaning: <b>{count}...</b> 🔔",
+                parse_mode="HTML"
+            )
+            await asyncio.sleep(1.0)
+        except Exception:
+            pass
+
+    try:
+        await callback.message.edit_text(
+            f"🚀 <b>Ketdik! 1-savol kelmoqda...</b>",
+            parse_mode="HTML"
+        )
+        await asyncio.sleep(0.5)
+    except Exception:
+        pass
+
+    session = {
+        "quiz_id": quiz_id,
+        "title": quiz.get("title", "Viktorina"),
+        "is_running": True,
+        "cancelled": False,
+        "current_poll_id": None,
+        "current_msg_id": None,
+        "initiator_id": user.id,
+        "scores": {},
+    }
+    _group_active_quizzes[chat_id] = session
+
+    task = asyncio.create_task(run_group_quiz_loop(chat_id, quiz, bot, session))
+    session["task"] = task
+
+
+@router.callback_query(F.data.startswith("qgrp:cancel:"))
+async def handle_group_quiz_cancel(callback: CallbackQuery, bot: Bot) -> None:
+    """Guruhdagi viktorinani bekor qilish yoki to'xtatish."""
+    chat_id = callback.message.chat.id
+    user = callback.from_user
+
+    active = _group_active_quizzes.get(chat_id)
+    if active:
+        is_initiator = (user.id == active.get("initiator_id"))
+        is_admin = False
+        try:
+            member = await bot.get_chat_member(chat_id, user.id)
+            if member.status in ["administrator", "creator"]:
+                is_admin = True
+        except Exception:
+            pass
+
+        if not (is_initiator or is_admin):
+            await callback.answer("❌ Viktorinani faqat admin yoki uni boshlagan shaxs to'xtata oladi!", show_alert=True)
+            return
+
+        active["cancelled"] = True
+        active["is_running"] = False
+        task = active.get("task")
+        if task and not task.done():
+            task.cancel()
+
+        current_msg_id = active.get("current_msg_id")
+        if current_msg_id:
+            try:
+                await bot.stop_poll(chat_id=chat_id, message_id=current_msg_id)
+            except Exception:
+                pass
+
+        _group_active_quizzes.pop(chat_id, None)
+        await callback.message.answer("🛑 <b>Guruhdagi viktorina to'xtatildi.</b>", parse_mode="HTML")
+        await callback.answer("Viktorina to'xtatildi.")
+    else:
+        try:
+            await callback.message.edit_text("❌ <b>Viktorina bekor qilindi.</b>", parse_mode="HTML")
+        except Exception:
+            pass
+        await callback.answer("Bekor qilindi.")
+
+
+async def run_group_quiz_loop(chat_id: int, quiz: dict[str, Any], bot: Bot, session: dict[str, Any]) -> None:
+    """Guruhda savollarni sinxron ketma-ket yuboruvchi worker."""
+    questions = quiz.get("questions", [])
+    quiz_id = quiz.get("quiz_id", "")
+    timer_seconds = quiz.get("timer_seconds", 30)
+    if not (5 <= timer_seconds <= 600):
+        timer_seconds = 30
+
+    total = len(questions)
+
+    try:
+        for idx, q in enumerate(questions, 1):
+            if session.get("cancelled") or not session.get("is_running"):
+                break
+
+            # Listening audio bo'lsa
+            if q.get("audio_text"):
+                try:
+                    audio_bytes = await generate_audio_bytes(q["audio_text"])
+                    if audio_bytes:
+                        audio_file = BufferedInputFile(audio_bytes, filename=f"listening_{idx}.mp3")
+                        await bot.send_voice(
+                            chat_id=chat_id,
+                            voice=audio_file,
+                            caption=f"🎧 <b>[{idx}/{total}] Audioni tinglang va javobni tanlang:</b>",
+                            parse_mode="HTML",
+                        )
+                        await asyncio.sleep(0.5)
+                except Exception as a_err:
+                    logger.warning("Guruh audiosida xatolik: %s", a_err)
+
+            q_text = f"[{idx}/{total}] {q['question']}"
+            opts = [str(o)[:100] for o in q.get("options", [])][:10]
+            c_id = q.get("correct_id", 0)
+            expl = str(q.get("explanation", "")).strip()[:200]
+
+            poll_kwargs = {
+                "chat_id": chat_id,
+                "question": q_text[:300],
+                "options": opts,
+                "type": "quiz",
+                "correct_option_id": c_id,
+                "is_anonymous": False,
+                "open_period": timer_seconds,
+            }
+            if expl:
+                poll_kwargs["explanation"] = expl
+
+            try:
+                msg = await bot.send_poll(**poll_kwargs)
+            except Exception as pe:
+                logger.error("Guruhda poll jo'natishda xatolik: %s", pe)
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text="❌ Guruhda so'rovnoma (Poll) yuborishda xatolik yuz berdi. Botda tegishli admin/poll ruxsatlari borligini tekshiring."
+                )
+                break
+
+            session["current_poll_id"] = msg.poll.id
+            session["current_msg_id"] = msg.message_id
+            _group_poll_map[msg.poll.id] = (chat_id, quiz_id, c_id, time.time())
+
+            for _ in range(timer_seconds):
+                if session.get("cancelled") or not session.get("is_running"):
+                    break
+                await asyncio.sleep(1.0)
+
+            if session.get("cancelled") or not session.get("is_running"):
+                break
+
+            try:
+                await bot.stop_poll(chat_id=chat_id, message_id=msg.message_id)
+            except Exception:
+                pass
+
+            if idx < total:
+                await asyncio.sleep(2.0)
+
+        if not session.get("cancelled") and session.get("is_running"):
+            await finish_group_quiz(chat_id, quiz, bot, session)
+
+    except asyncio.CancelledError:
+        logger.info("Guruh viktorinasi bekor qilindi: %d", chat_id)
+    except Exception as e:
+        logger.exception("Guruh viktorinasi siklida xatolik: %s", e)
+    finally:
+        _group_active_quizzes.pop(chat_id, None)
+
+
+async def finish_group_quiz(chat_id: int, quiz: dict[str, Any], bot: Bot, session: dict[str, Any]) -> None:
+    """Guruhdagi viktorina yakunlanganda jonli reyting (Leaderboard) chiqarish."""
+    quiz_id = quiz.get("quiz_id", "")
+    title = html.escape(quiz.get("title", "Viktorina"), quote=False)
+    total = len(quiz.get("questions", []))
+    scores_dict = session.get("scores", {})
+
+    if not scores_dict:
+        finish_text = (
+            f"🏁 <b>«{title}» viktorinasi yakunlandi!</b>\n\n"
+            f"📊 Jami savollar: {total} ta\n"
+            f"<i>Hech kim savollarga javob bermadi.</i>"
+        )
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="🔄 Qaytadan boshlash", callback_data=f"qgrp:start:{quiz_id}")]
+            ]
+        )
+        await bot.send_message(chat_id=chat_id, text=finish_text, reply_markup=kb, parse_mode="HTML")
+        return
+
+    sorted_players = sorted(
+        scores_dict.values(),
+        key=lambda p: (-p["score"], p["total_time"])
+    )
+
+    medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+    lines = []
+    for i, p in enumerate(sorted_players[:10]):
+        rank_icon = medals[i] if i < len(medals) else f"{i+1}."
+        p_name = html.escape(p["name"], quote=False)
+        p_score = p["score"]
+        p_time = round(p["total_time"], 1)
+        lines.append(f"{rank_icon} <b>{p_name}</b> — <b>{p_score}/{total}</b> ball ({p_time}s)")
+
+    leaderboard_str = "\n".join(lines)
+    winner_name = sorted_players[0]["name"]
+
+    finish_text = (
+        f"🏆 <b>VIKTORINA YAKUNLANDI!</b>\n"
+        f"✦ • ──────────────────── • ✦\n"
+        f"📌 <b>Mavzu:</b> «{title}»\n"
+        f"📊 <b>Savollar:</b> {total} ta | 👥 <b>Ishtirokchilar:</b> {len(sorted_players)} nafar\n\n"
+        f"🎉 <b>G'olib:</b> <b>{html.escape(winner_name, quote=False)}</b> 👏\n\n"
+        f"<b>Ishtirokchilar natijalari:</b>\n"
+        f"{leaderboard_str}\n\n"
+        f"<i>Barcha ishtirokchilarga rahmat!</i>"
+    )
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📊 Excel natijalar (.xlsx)", callback_data=f"gexp:excel:{chat_id}:{quiz_id}"),
+            ],
+            [
+                InlineKeyboardButton(text="🔄 Qaytadan o'ynash", callback_data=f"qgrp:start:{quiz_id}"),
+            ]
+        ]
+    )
+    await bot.send_message(chat_id=chat_id, text=finish_text, reply_markup=kb, parse_mode="HTML")
+
+
+@router.callback_query(F.data.startswith("qcard:more:"))
+async def handle_quiz_card_more(callback: CallbackQuery, bot: Bot) -> None:
+    """Test kartochkasidagi qo'shimcha menyuni ochish."""
+    quiz_id = callback.data.split(":")[2]
+    bot_info = await bot.get_me()
+    try:
+        await callback.message.edit_reply_markup(
+            reply_markup=get_quiz_card_keyboard(quiz_id, bot_info.username or "quiz_tuzdimbot", full_menu=True)
+        )
+    except Exception:
+        pass
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("qcard:less:"))
+async def handle_quiz_card_less(callback: CallbackQuery, bot: Bot) -> None:
+    """Test kartochkasidagi qisqa (chalg'itmaydigan) menyuga qaytish."""
+    quiz_id = callback.data.split(":")[2]
+    bot_info = await bot.get_me()
+    try:
+        await callback.message.edit_reply_markup(
+            reply_markup=get_quiz_card_keyboard(quiz_id, bot_info.username or "quiz_tuzdimbot", full_menu=False)
+        )
+    except Exception:
+        pass
+    await callback.answer()
+
+
 async def send_next_question(session_key: int, bot: Bot) -> None:
     """Faol sessiyadagi navbatdagi savolni yuborish."""
     session = _active_sessions.get(session_key)
@@ -398,11 +711,35 @@ async def handle_poll_answer(poll_answer: PollAnswer, bot: Bot) -> None:
 
     # 1. Guruhdagi umumiy poll bo'lsa, ballni hisoblab borish
     if pid in _group_poll_map:
-        grp_chat_id, grp_quiz_id, correct_id = _group_poll_map[pid]
+        grp_data = _group_poll_map[pid]
+        grp_chat_id = grp_data[0]
+        grp_quiz_id = grp_data[1]
+        correct_id = grp_data[2]
+        q_start = grp_data[3] if len(grp_data) > 3 else time.time()
+
         user = poll_answer.user
         chosen = poll_answer.option_ids[0] if poll_answer.option_ids else -1
         is_correct = (chosen == correct_id)
-        name = f"{user.first_name or ''} {user.last_name or ''}".strip() or (user.username or "O'quvchi")
+        name = f"{user.first_name or ''} {user.last_name or ''}".strip() or (user.username or "Ishtirokchi")
+        time_spent = max(0.1, time.time() - q_start)
+
+        # Jonli guruh sessiyasida ball va vaqtni hisoblash
+        if grp_chat_id in _group_active_quizzes:
+            sess = _group_active_quizzes[grp_chat_id]
+            scores = sess.setdefault("scores", {})
+            if user.id not in scores:
+                scores[user.id] = {
+                    "name": name,
+                    "score": 0,
+                    "total_time": 0.0,
+                    "answered_count": 0,
+                }
+            player = scores[user.id]
+            player["answered_count"] += 1
+            player["total_time"] += time_spent
+            if is_correct:
+                player["score"] += 1
+
         try:
             await record_group_answer(grp_chat_id, grp_quiz_id, user.id, name, is_correct)
         except Exception as e:

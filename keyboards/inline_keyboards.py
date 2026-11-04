@@ -196,23 +196,36 @@ def get_change_timer_keyboard(quiz_id: str) -> InlineKeyboardMarkup:
     )
 
 
-def get_quiz_card_keyboard(quiz_id: str, bot_username: str = "quiz_tuzdimbot", has_media: bool = True) -> InlineKeyboardMarkup:
-    """Yangi tuzilgan quiz kartochkasi klaviaturasi."""
+def get_quiz_card_keyboard(
+    quiz_id: str,
+    bot_username: str = "quiz_tuzdimbot",
+    has_media: bool = False,
+    full_menu: bool = False,
+) -> InlineKeyboardMarkup:
+    """Yangi tuzilgan yoki ochilgan quiz kartochkasi klaviaturasi (ixcham va qulay)."""
+    if not full_menu:
+        # SODDA VA QULAY KO'RINISH: Foydalanuvchini chalg'itmaydi
+        rows = [
+            [
+                InlineKeyboardButton(text="▶️ Testni boshlash", callback_data=f"qrun:start:{quiz_id}"),
+            ],
+            [
+                InlineKeyboardButton(text="👥 Guruhda boshlash", url=f"https://t.me/{bot_username}?startgroup=poll_{quiz_id}"),
+                InlineKeyboardButton(text="📤 Ulashish", switch_inline_query=f"quiz_{quiz_id}"),
+            ],
+            [
+                InlineKeyboardButton(text="⚙️ Boshqa amallar (PDF, Word, Taymer)", callback_data=f"qcard:more:{quiz_id}"),
+            ],
+        ]
+        return InlineKeyboardMarkup(inline_keyboard=rows)
+
+    # To'liq menyu (agar foydalanuvchi "Boshqa amallar"ni bossa):
     rows = [
         [
-            InlineKeyboardButton(text="▶️ O'zim yechish (Interaktiv)", callback_data=f"qrun:start:{quiz_id}"),
+            InlineKeyboardButton(text="▶️ Testni boshlash", callback_data=f"qrun:start:{quiz_id}"),
         ],
         [
-            InlineKeyboardButton(text="👥 Guruhga tashlash (Quiz Poll)", url=f"https://t.me/{bot_username}?startgroup=poll_{quiz_id}"),
-            InlineKeyboardButton(text="📩 Barcha testlarni tashlash", callback_data=f"qrun:dump:{quiz_id}"),
-        ],
-    ]
-    if has_media:
-        rows.append([
-            InlineKeyboardButton(text="🔄 Shu manbadan keyingi yangi testlar 🎯", callback_data=f"qrun:next_batch:{quiz_id}")
-        ])
-    rows.extend([
-        [
+            InlineKeyboardButton(text="👥 Guruhda boshlash", url=f"https://t.me/{bot_username}?startgroup=poll_{quiz_id}"),
             InlineKeyboardButton(text="⏱ Taymerni o'zgartirish", callback_data=f"qedit:tm:{quiz_id}"),
         ],
         [
@@ -223,9 +236,14 @@ def get_quiz_card_keyboard(quiz_id: str, bot_username: str = "quiz_tuzdimbot", h
             InlineKeyboardButton(text="🤖 @QuizBot matni", callback_data=f"qexp:quizbot:{quiz_id}"),
             InlineKeyboardButton(text="📤 Ulashish", switch_inline_query=f"quiz_{quiz_id}"),
         ],
-        [
-            InlineKeyboardButton(text="🔙 Asosiy menyu", callback_data="menu:home"),
-        ],
+    ]
+    if has_media:
+        rows.append([
+            InlineKeyboardButton(text="🔄 Shu manbadan yangi to'plam 🎯", callback_data=f"qrun:next_batch:{quiz_id}")
+        ])
+    rows.append([
+        InlineKeyboardButton(text="🔙 Qisqa menyuga qaytish", callback_data=f"qcard:less:{quiz_id}"),
+        InlineKeyboardButton(text="🏠 Asosiy menyu", callback_data="menu:home"),
     ])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 

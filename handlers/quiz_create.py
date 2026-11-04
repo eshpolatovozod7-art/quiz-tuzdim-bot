@@ -612,11 +612,9 @@ async def handle_qcfg_timer(callback: CallbackQuery, bot: Bot, state: FSMContext
     card_text = (
         f"🎯 <b>\"{escaped_title}\" testi tayyor!</b>\n"
         f"✦ • ──────────────────── • ✦\n\n"
-        f"📊 <b>Savollar soni:</b> {len(questions)} ta\n"
-        f"🔘 <b>Variantlar:</b> {opts} ta\n"
-        f"⏱ <b>Taymer:</b> {timer_str}\n"
-        f"🎚 <b>Qiyinlik:</b> {diff.capitalize()}\n\n"
-        f"💡 <i>Ushbu testni hoziroq interaktiv yechishingiz, chop etish uchun PDF qilib yuklab olishingiz yoki guruhlarga ulashishingiz mumkin:</i>"
+        f"📊 <b>Savollar:</b> {len(questions)} ta | ⏱ <b>Taymer:</b> {timer_str}\n"
+        f"🔘 <b>Variantlar:</b> {opts} ta | 🎚 <b>Qiyinlik:</b> {diff.capitalize()}\n\n"
+        f"<i>Testni boshlash uchun quyidagi tugmani bosing:</i>"
     )
 
     await bot.send_message(
