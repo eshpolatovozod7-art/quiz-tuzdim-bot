@@ -169,6 +169,33 @@ def get_quiz_timer_keyboard() -> InlineKeyboardMarkup:
     )
 
 
+def get_change_timer_keyboard(quiz_id: str) -> InlineKeyboardMarkup:
+    """Mavjud testning taymerini o'zgartirish klaviaturasi."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="⏳ Cheklovsiz (Vaqt yo'q)", callback_data=f"qsettm:{quiz_id}:0"),
+                InlineKeyboardButton(text="⚡️ 10 sekund", callback_data=f"qsettm:{quiz_id}:10"),
+            ],
+            [
+                InlineKeyboardButton(text="⏱ 15 sekund", callback_data=f"qsettm:{quiz_id}:15"),
+                InlineKeyboardButton(text="⏱ 30 sekund", callback_data=f"qsettm:{quiz_id}:30"),
+            ],
+            [
+                InlineKeyboardButton(text="⏱ 45 sekund", callback_data=f"qsettm:{quiz_id}:45"),
+                InlineKeyboardButton(text="⏱ 60 sekund (1 daqiqa)", callback_data=f"qsettm:{quiz_id}:60"),
+            ],
+            [
+                InlineKeyboardButton(text="⏱ 90 sekund", callback_data=f"qsettm:{quiz_id}:90"),
+                InlineKeyboardButton(text="⏱ 120 sekund (2 daqiqa)", callback_data=f"qsettm:{quiz_id}:120"),
+            ],
+            [
+                InlineKeyboardButton(text="🔙 Ortga", callback_data=f"qsettm_back:{quiz_id}"),
+            ],
+        ]
+    )
+
+
 def get_quiz_card_keyboard(quiz_id: str, bot_username: str = "quiz_tuzdimbot", has_media: bool = True) -> InlineKeyboardMarkup:
     """Yangi tuzilgan quiz kartochkasi klaviaturasi."""
     rows = [
@@ -185,6 +212,9 @@ def get_quiz_card_keyboard(quiz_id: str, bot_username: str = "quiz_tuzdimbot", h
             InlineKeyboardButton(text="🔄 Shu manbadan keyingi yangi testlar 🎯", callback_data=f"qrun:next_batch:{quiz_id}")
         ])
     rows.extend([
+        [
+            InlineKeyboardButton(text="⏱ Taymerni o'zgartirish", callback_data=f"qedit:tm:{quiz_id}"),
+        ],
         [
             InlineKeyboardButton(text="📄 PDF test varaqasi", callback_data=f"qexp:pdf:{quiz_id}"),
             InlineKeyboardButton(text="📝 Word (.docx)", callback_data=f"qexp:docx:{quiz_id}"),

@@ -6,8 +6,8 @@ from typing import Any
 from aiogram import Router, F, Bot
 from aiogram.types import CallbackQuery, PollAnswer, InlineKeyboardMarkup, InlineKeyboardButton, BufferedInputFile
 
-from database.db import get_quiz, save_attempt, record_group_answer
-from keyboards.inline_keyboards import get_quiz_finish_keyboard
+from database.db import get_quiz, save_attempt, record_group_answer, update_quiz_timer
+from keyboards.inline_keyboards import get_quiz_finish_keyboard, get_change_timer_keyboard, get_quiz_card_keyboard
 from services.tts_service import generate_audio_bytes
 
 logger = logging.getLogger(__name__)
@@ -592,3 +592,100 @@ async def handle_stop_quiz(callback: CallbackQuery, bot: Bot) -> None:
     )
     if callback.message:
         await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
+
+
+# ---------------- Taymerni O'zgartirish (Edit Timer) ---------------- #
+
+@router.callback_query(F.data.startswith("qedit:tm:"))
+async def handle_edit_timer_start(callback: CallbackQuery) -> None:
+    """Mavjud testning taymerini o'zgartirish oynasini ochish."""
+    quiz_id = callback.data.split(":")[2]
+    quiz = await get_quiz(quiz_id)
+    if not quiz:
+        await callback.answer("Test topilmadi", show_alert=True)
+        return
+
+    cur_timer = quiz.get("timer_seconds", 0)
+    cur_str = "Cheklovsiz (Vaqt belgilanmagan)" if cur_timer == 0 else f"{cur_timer} soniya"
+    title = html.escape(quiz.get("title", "Test"), quote=False)
+
+    text = (
+        f"⏱ <b>«{title}» testi taymerini o'zgartirish:</b>\n\n"
+        f"Joriy vaqt chegarasi: <b>{cur_str}</b>\n\n"
+        "<i>Har bir savol uchun yangi vaqt chegarasini tanlang:</i> 👇"
+    )
+    if callback.message:
+        await callback.message.edit_text(text, reply_markup=get_change_timer_keyboard(quiz_id), parse_mode="HTML")
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("qsettm:"))
+async def handle_save_new_timer(callback: CallbackQuery, bot: Bot) -> None:
+    """Yangi tanlangan taymerni bazada saqlash va kartochkani yangilash."""
+    parts = callback.data.split(":")
+    quiz_id = parts[1]
+    new_tm = int(parts[2])
+
+    await update_quiz_timer(quiz_id, new_tm)
+
+    tm_str = "Cheklovsiz" if new_tm == 0 else f"{new_tm} soniya"
+    await callback.answer(f"Taymer muvaffaqiyatli {tm_str}ga almashtirildi! ✅", show_alert=True)
+
+    quiz = await get_quiz(quiz_id)
+    if not quiz:
+        return
+
+    bot_info = await bot.get_me()
+    clean_title = html.escape(quiz.get("title", "Test"), quote=False)
+    diff = {"easy": "Oson", "medium": "O'rta", "hard": "Qiyin", "olympiad": "Olimpiada"}.get(quiz.get("difficulty", "medium"), "O'rta")
+    count = quiz.get("question_count", len(quiz.get("questions", [])))
+
+    card_text = (
+        f"🎯 <b>\"{clean_title}\" testi (Taymer yangilandi ✅)</b>\n"
+        f"✦ • ──────────────────── • ✦\n\n"
+        f"📊 <b>Savollar soni:</b> {count} ta\n"
+        f"🔘 <b>Variantlar:</b> {quiz.get('options_count', 4)} ta\n"
+        f"⏱ <b>Taymer:</b> <b>{tm_str}</b> ⚡️\n"
+        f"🎚 <b>Qiyinlik:</b> {diff}\n\n"
+        f"💡 <i>Ushbu testni yangilangan taymer bilan yechishingiz, chop etish uchun PDF qilib yuklab olishingiz yoki guruhlarga ulashishingiz mumkin:</i>"
+    )
+    if callback.message:
+        await callback.message.edit_text(
+            card_text,
+            reply_markup=get_quiz_card_keyboard(quiz_id, bot_info.username or "quiz_tuzdimbot"),
+            parse_mode="HTML",
+        )
+
+
+@router.callback_query(F.data.startswith("qsettm_back:"))
+async def handle_cancel_timer_change(callback: CallbackQuery, bot: Bot) -> None:
+    """Taymerni o'zgartirishni bekor qilib kartochkaga qaytish."""
+    quiz_id = callback.data.split(":")[1]
+    quiz = await get_quiz(quiz_id)
+    if not quiz:
+        return
+
+    bot_info = await bot.get_me()
+    clean_title = html.escape(quiz.get("title", "Test"), quote=False)
+    tm = quiz.get("timer_seconds", 0)
+    tm_str = "Cheklovsiz" if tm == 0 else f"{tm} soniya"
+    diff = {"easy": "Oson", "medium": "O'rta", "hard": "Qiyin", "olympiad": "Olimpiada"}.get(quiz.get("difficulty", "medium"), "O'rta")
+    count = quiz.get("question_count", len(quiz.get("questions", [])))
+
+    card_text = (
+        f"🎯 <b>\"{clean_title}\" testi</b>\n"
+        f"✦ • ──────────────────── • ✦\n\n"
+        f"📊 <b>Savollar soni:</b> {count} ta\n"
+        f"🔘 <b>Variantlar:</b> {quiz.get('options_count', 4)} ta\n"
+        f"⏱ <b>Taymer:</b> {tm_str}\n"
+        f"🎚 <b>Qiyinlik:</b> {diff}\n\n"
+        f"💡 <i>Ushbu testni boshlashingiz yoki guruhlarga ulashishingiz mumkin:</i>"
+    )
+    if callback.message:
+        await callback.message.edit_text(
+            card_text,
+            reply_markup=get_quiz_card_keyboard(quiz_id, bot_info.username or "quiz_tuzdimbot"),
+            parse_mode="HTML",
+        )
+    await callback.answer()
+

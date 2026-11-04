@@ -641,3 +641,12 @@ async def get_group_quiz_results_for_excel(group_id: int, quiz_id: str | None = 
     return await get_group_leaderboard(group_id, quiz_id=quiz_id, limit=50)
 
 
+async def update_quiz_timer(quiz_id: str, new_timer: int) -> bool:
+    """Mavjud testning taymerini (soniyasini) yangilash."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE quizzes SET timer_seconds = ? WHERE quiz_id = ?", (new_timer, quiz_id))
+        await db.commit()
+        return True
+
+
+
