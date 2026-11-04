@@ -40,7 +40,7 @@ async def handle_daily_quiz(event: Message | CallbackQuery, bot: Bot) -> None:
         )
         kb = InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="🎲 Yangi test tuzish", callback_data="menu:topic")],
+                [InlineKeyboardButton(text="🎲 Test tuzish", callback_data="menu:create")],
                 [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="menu:home")],
             ]
         )

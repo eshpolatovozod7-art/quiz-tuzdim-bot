@@ -2,28 +2,35 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 
 def get_main_menu_keyboard() -> InlineKeyboardMarkup:
-    """Asosiy menyu klaviaturasi (toza, kategoriyalangan va qulay)."""
+    """Asosiy menyu klaviaturasi (QuizBot kabi sodda, toza va tushunarli)."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="🎲 Mavzu bo'yicha test", callback_data="menu:topic"),
-                InlineKeyboardButton(text="📁 Fayl / Hujjatdan test", callback_data="menu:files"),
-            ],
-            [
-                InlineKeyboardButton(text="🏛 DTM & Imtihonlar", callback_data="menu:presets"),
-                InlineKeyboardButton(text="🔗 YouTube / Havoladan", callback_data="menu:url"),
-            ],
-            [
-                InlineKeyboardButton(text="🔥 Kun Testi (Streak)", callback_data="menu:daily"),
-                InlineKeyboardButton(text="⚔️ 1 vs 1 Duel (Jang)", callback_data="menu:duel"),
+                InlineKeyboardButton(text="🎲 Test tuzish", callback_data="menu:create"),
             ],
             [
                 InlineKeyboardButton(text="📜 Mening testlarim", callback_data="menu:history"),
-                InlineKeyboardButton(text="📊 Mening statistikam", callback_data="menu:stats"),
             ],
             [
-                InlineKeyboardButton(text="📢 Guruh va Kanallar", callback_data="menu:channels"),
+                InlineKeyboardButton(text="📊 Statistika", callback_data="menu:stats"),
                 InlineKeyboardButton(text="ℹ️ Qo'llanma", callback_data="menu:help"),
+            ],
+        ]
+    )
+
+
+def get_create_source_keyboard() -> InlineKeyboardMarkup:
+    """Test tuzish usulini tanlash (Mavzu yoki Manba)."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✍️ Mavzu bo'yicha (AI o'zi tuzadi)", callback_data="menu:topic"),
+            ],
+            [
+                InlineKeyboardButton(text="📁 Manba orqali (Fayl / Kitob / Rasm)", callback_data="menu:source"),
+            ],
+            [
+                InlineKeyboardButton(text="🔙 Bosh menyu", callback_data="menu:home"),
             ],
         ]
     )
@@ -87,7 +94,7 @@ def get_exam_presets_keyboard() -> InlineKeyboardMarkup:
 
 
 def get_popular_topics_keyboard() -> InlineKeyboardMarkup:
-    """Mashhur mavzular klaviaturasi."""
+    """Mashhur fanlar klaviaturasi."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -95,7 +102,7 @@ def get_popular_topics_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="💻 Dasturlash (IT)", callback_data="qtop:Dasturlash"),
             ],
             [
-                InlineKeyboardButton(text="🇬🇧 Ingliz tili (IELTS)", callback_data="qtop:Ingliz tili"),
+                InlineKeyboardButton(text="🇬🇧 Ingliz tili", callback_data="qtop:Ingliz tili"),
                 InlineKeyboardButton(text="🏛 O'zbekiston tarixi", callback_data="qtop:Tarix"),
             ],
             [
@@ -103,11 +110,7 @@ def get_popular_topics_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="⚡️ Fizika", callback_data="qtop:Fizika"),
             ],
             [
-                InlineKeyboardButton(text="🌍 Geografiya", callback_data="qtop:Geografiya"),
-                InlineKeyboardButton(text="🧠 Mantiqiy savollar", callback_data="qtop:Mantiq"),
-            ],
-            [
-                InlineKeyboardButton(text="🔙 Asosiy menyu", callback_data="menu:home"),
+                InlineKeyboardButton(text="🔙 Ortga", callback_data="menu:create"),
             ],
         ]
     )

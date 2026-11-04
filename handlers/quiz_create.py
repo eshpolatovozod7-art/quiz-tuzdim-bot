@@ -12,10 +12,9 @@ from config import UPLOADS_DIR
 from database.db import save_quiz, get_user_used_questions
 from keyboards.inline_keyboards import (
     get_main_menu_keyboard,
-    get_files_menu_keyboard,
+    get_create_source_keyboard,
     get_back_to_menu_keyboard,
     get_popular_topics_keyboard,
-    get_exam_presets_keyboard,
     get_quiz_count_keyboard,
     get_quiz_options_keyboard,
     get_quiz_difficulty_keyboard,
@@ -38,76 +37,62 @@ gemini_service = GeminiService()
 
 
 @router.message(Command("newquiz"))
-async def handle_newquiz_command(message: Message, state: FSMContext) -> None:
-    """QuizBot kabi /newquiz orqali test yaratish."""
+@router.callback_query(F.data == "menu:create")
+async def handle_create_menu(event: Message | CallbackQuery, state: FSMContext) -> None:
+    """Test tuzish: Mavzu bo'yicha yoki Manba orqali tanlash."""
     await state.clear()
-    await state.set_state(QuizCreateState.waiting_topic)
     text = (
-        "🎲 <b>Yangi test yaratish:</b>\n\n"
-        "Quyidagi mashhur fanlardan birini tanlang yoki test mavzusi/nomini chatga yozing:\n"
-        "<i>(Shuningdek, PDF, Word, rasm yoki audio fayl tashlasangiz ham bo'ladi)</i>\n\n"
-        "👇 <b>Fanni tanlang yoki mavzuni yozing:</b>"
+        "🎲 <b>Qanday usulda test tuzmoqchisiz?</b>\n\n"
+        "• ✍️ <b>Mavzu bo‘yicha</b> — shunchaki mavzu yoki fan nomini yozasiz, AI mavzuga moslab o‘zi tuzadi.\n"
+        "• 📁 <b>Manba orqali</b> — PDF, kitob, Word, rasm, konspekt yoki havola yuborasiz, AI o‘sha manba asosida tuzadi.\n\n"
+        "<i>Kerakli usulni tanlang:</i> 👇"
     )
-    await message.answer(text, reply_markup=get_popular_topics_keyboard(), parse_mode="HTML")
+    kb = get_create_source_keyboard()
+    if isinstance(event, CallbackQuery):
+        await event.answer()
+        if event.message:
+            await event.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    else:
+        await event.answer(text, reply_markup=kb, parse_mode="HTML")
 
 
-# ---------------- Menyu bo'limlari ---------------- #
-
-@router.callback_query(F.data == "menu:files")
-async def handle_menu_files(callback: CallbackQuery) -> None:
-    """Fayl yoki hujjat manbasini tanlash sub-menyusi."""
-    await callback.answer()
-    text = (
-        "📁 <b>Fayl yoki Hujjatdan test tuzish:</b>\n\n"
-        "Qaysi turdagi manbadan test tuzmoqchisiz? Tanlang yoki to'g'ridan-to'g'ri faylni chatga yuboring:\n\n"
-        "• 📄 <b>PDF yoki Word</b> — darslik, qo'llanma, konspektlar\n"
-        "• 📸 <b>Rasm</b> — doska, kitob sahifasi yoki daftar fotosi\n"
-        "• 🎙 <b>Ovoz / Audio</b> — ma'ruza yoki ovozli xabar\n"
-        "• 🎥 <b>Video</b> — video darsliklar\n"
-        "• 📋 <b>Matn</b> — qo'lda yozilgan yoki nusxalangan matn\n\n"
-        "👇 <b>Kerakli formatni tanlang:</b>"
-    )
-    if callback.message:
-        await callback.message.edit_text(text, reply_markup=get_files_menu_keyboard(), parse_mode="HTML")
-
-
-@router.callback_query(F.data == "menu:topic")
+@router.callback_query(F.data.in_(["menu:topic", "menu:presets"]))
 async def handle_menu_topic(callback: CallbackQuery, state: FSMContext) -> None:
+    """Mavzu bo'yicha test tuzish."""
     await state.set_state(QuizCreateState.waiting_topic)
     await callback.answer()
     text = (
-        "🎲 <b>Mavzu bo'yicha test tuzish:</b>\n\n"
-        "Quyidagi mashhur fanlardan birini tanlang yoki o'zingiz istagan mavzu/fan nomini chatga yozing:\n"
-        "<i>(Masalan: Oliy matematika, Python OOP, Jahon tarixi, IELTS Vocabulary...)</i>\n\n"
-        "👇 <b>Fanni tanlang yoki mavzuni yozing:</b>"
+        "✍️ <b>Mavzu bo‘yicha test tuzish:</b>\n\n"
+        "Test mavzusini yoki fan nomini chatga yozing:\n"
+        "<i>(Masalan: Oliy matematika, Python OOP, Jahon tarixi, IELTS...)</i>\n\n"
+        "Yoki quyidagi mashhur fanlardan birini tanlang: 👇"
     )
     if callback.message:
         await callback.message.edit_text(text, reply_markup=get_popular_topics_keyboard(), parse_mode="HTML")
 
 
-@router.callback_query(F.data == "menu:presets")
-async def handle_menu_presets(callback: CallbackQuery) -> None:
+@router.callback_query(F.data.in_(["menu:source", "menu:files", "menu:doc", "menu:image", "menu:audio", "menu:video", "menu:url", "menu:text"]))
+async def handle_menu_source(callback: CallbackQuery, state: FSMContext) -> None:
+    """Manba (fayl/hujjat/rasm/audio/video/havola) orqali test tuzish."""
+    await state.set_state(QuizCreateState.waiting_document)
+    await callback.answer()
     text = (
-        "🏛 <b>DTM, Milliy Sertifikat va IELTS maxsus shablonlari:</b>\n\n"
-        "O'zingizga kerakli imtihon yo'nalishini tanlang:\n"
-        "AI aynan shu imtihon formati, mezonlari va qiyinlik darajasiga moslashtirilgan testlarni tuzib beradi! 👇"
+        "📁 <b>Manba orqali test tuzish:</b>\n\n"
+        "Chatga quyidagi manbalardan birini to‘g‘ridan-to‘g‘ri yuboring:\n\n"
+        "• 📄 <b>PDF yoki Word</b> konspekt, kitob, qo‘llanma\n"
+        "• 📸 <b>Rasm / Fotosurat</b> (kitob yoki daftar sahifasi, doska)\n"
+        "• 🎙 <b>Ovozli xabar / Audio</b> (ma'ruza yozuvi)\n"
+        "• 🎥 <b>Video</b> darslik\n"
+        "• 🔗 <b>YouTube yoki maqola</b> havolasi\n\n"
+        "👇 <b>Fayl yoki havolani hozir chatga tashlang:</b>"
+    )
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Ortga", callback_data="menu:create")]
+        ]
     )
     if callback.message:
-        await callback.message.edit_text(text, reply_markup=get_exam_presets_keyboard(), parse_mode="HTML")
-    await callback.answer()
-
-
-@router.callback_query(F.data == "menu:url")
-async def handle_menu_url(callback: CallbackQuery) -> None:
-    text = (
-        "🔗 <b>YouTube yoki Maqola havolasidan test tuzish:</b>\n\n"
-        "Istalgan <b>YouTube video</b> yoki <b>veb-sahifa/maqola</b> havolasini chatga yuboring:\n"
-        "<i>(Masalan: https://youtu.be/... yoki https://kun.uz/...)</i>\n\n"
-        "👇 <b>Havolani hozir chatga yozib yuboring:</b>"
-    )
-    if callback.message:
-        await callback.message.edit_text(text, reply_markup=get_back_to_menu_keyboard(), parse_mode="HTML")
-    await callback.answer()
+        await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
 
 
 @router.callback_query(F.data.startswith("qtop:"))
@@ -115,74 +100,6 @@ async def handle_topic_preset(callback: CallbackQuery, state: FSMContext) -> Non
     topic_name = callback.data.split(":", 1)[1]
     await callback.answer(f"{topic_name} tanlandi")
     await start_quiz_wizard(callback.message, state, topic=topic_name, user_id=callback.from_user.id)
-
-
-@router.callback_query(F.data == "menu:doc")
-async def handle_menu_doc(callback: CallbackQuery, state: FSMContext) -> None:
-    await state.set_state(QuizCreateState.waiting_document)
-    await callback.answer()
-    text = (
-        "📄 <b>PDF yoki Word hujjat yuboring:</b>\n\n"
-        "Darslik, ma'ruza matni yoki konspektni <b>PDF</b> yoki <b>Word (.docx, .doc, .txt)</b> formatida yuboring (20 MB gacha).\n\n"
-        "👇 <b>Faylni hozir chatga tashlang:</b>"
-    )
-    if callback.message:
-        await callback.message.edit_text(text, reply_markup=get_back_to_menu_keyboard(), parse_mode="HTML")
-
-
-@router.callback_query(F.data == "menu:video")
-async def handle_menu_video(callback: CallbackQuery, state: FSMContext) -> None:
-    await state.set_state(QuizCreateState.waiting_video)
-    await callback.answer()
-    text = (
-        "🎥 <b>Video darslik yuboring:</b>\n\n"
-        "Telegramga video darslik yoki video xabar (20 MB gacha) yuboring.\n"
-        "Sun'iy intellekt videoni ko'rib, undagi qoidalar va faktlar asosida viktorina tuzadi!\n\n"
-        "👇 <b>Videoni hozir chatga yuboring:</b>"
-    )
-    if callback.message:
-        await callback.message.edit_text(text, reply_markup=get_back_to_menu_keyboard(), parse_mode="HTML")
-
-
-@router.callback_query(F.data == "menu:audio")
-async def handle_menu_audio(callback: CallbackQuery, state: FSMContext) -> None:
-    await state.set_state(QuizCreateState.waiting_audio)
-    await callback.answer()
-    text = (
-        "🎙 <b>Audio yoki Ovozli xabar yuboring:</b>\n\n"
-        "Ovozli xabar (voice note) yoki audio fayl (mp3, m4a, ogg, wav) yuboring.\n"
-        "AI ma'ruza yoki audio darslikni tinglab viktorina tuzadi!\n\n"
-        "👇 <b>Audioni hozir chatga yuboring:</b>"
-    )
-    if callback.message:
-        await callback.message.edit_text(text, reply_markup=get_back_to_menu_keyboard(), parse_mode="HTML")
-
-
-@router.callback_query(F.data == "menu:image")
-async def handle_menu_image(callback: CallbackQuery, state: FSMContext) -> None:
-    await state.set_state(QuizCreateState.waiting_image)
-    await callback.answer()
-    text = (
-        "📸 <b>Rasm / Fotosurat yuboring:</b>\n\n"
-        "Doska surati, daftar konspekti yoki kitob sahifasining fotosini yuboring.\n"
-        "AI rasmdagi matn va formulalarni tahlil qilib test tuzadi!\n\n"
-        "👇 <b>Rasmni hozir chatga yuboring:</b>"
-    )
-    if callback.message:
-        await callback.message.edit_text(text, reply_markup=get_back_to_menu_keyboard(), parse_mode="HTML")
-
-
-@router.callback_query(F.data == "menu:text")
-async def handle_menu_text(callback: CallbackQuery, state: FSMContext) -> None:
-    await state.set_state(QuizCreateState.waiting_text)
-    await callback.answer()
-    text = (
-        "📋 <b>Matn yuboring:</b>\n\n"
-        "O'zingiz nusxalagan konspekt, maqola yoki mavzu matnini chatga yozib yuboring.\n\n"
-        "👇 <b>Matnni hozir chatga yozing:</b>"
-    )
-    if callback.message:
-        await callback.message.edit_text(text, reply_markup=get_back_to_menu_keyboard(), parse_mode="HTML")
 
 
 # ---------------- Xabarlarni qabul qilish ---------------- #

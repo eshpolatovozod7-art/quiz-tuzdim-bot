@@ -68,8 +68,8 @@ async def handle_start(message: Message, command: CommandObject, bot: Bot, state
     first_name = html.escape(user.first_name if user else "Foydalanuvchi")
     text = (
         f"Assalomu alaykum, <b>{first_name}</b>! 👋\n\n"
-        f"🎯 <b>Quiz Tuzdim Bot</b> — Sun'iy intellekt (Gemini AI) yordamida tezkor va professional testlar tuzuvchi yordamchingiz.\n\n"
-        f"👇 <b>Quyidagi bo'limlardan birini tanlang yoki chatga to'g'ridan-to'g'ri mavzu/fayl yuboring:</b>"
+        f"🎯 <b>Quiz Tuzdim Bot</b> — Telegramda tezkor va sifatli test tuzish yordamchingiz.\n\n"
+        f"👇 <b>Kerakli bo'limni tanlang:</b>"
     )
     await message.answer(text, reply_markup=get_main_menu_keyboard(), parse_mode="HTML")
 
@@ -80,17 +80,15 @@ async def handle_help(event: Message | CallbackQuery) -> None:
     """Yordam va yo'riqnoma."""
     text = (
         "📖 <b>Quiz Tuzdim Bot — Foydalanish Qo'llanmasi:</b>\n\n"
-        "1️⃣ <b>Test tuzish usullari:</b>\n"
-        "• <b>🎲 Mavzu bo'yicha:</b> Istalgan fan yoki dars mavzusini chatga yozing.\n"
-        "• <b>📄 Hujjatdan (PDF, Word):</b> Darslik yoki konspekt faylini yuboring.\n"
-        "• <b>📸 Rasmdan:</b> Doska, daftar yoki kitob sahifasi fotosini tashlang.\n"
-        "• <b>🎙 Audio / Ovozdan:</b> Ovozli xabar yoki audio darslik yuboring.\n"
-        "• <b>🎥 Video darslikdan:</b> Video darslik faylini yuboring.\n"
-        "• <b>🔗 Havoladan:</b> YouTube video yoki internet maqola linkini yuboring.\n\n"
-        "2️⃣ <b>Chop etishga tayyor A4 PDF va Word:</b>\n"
-        "Test tayyor bo'lgach, 'Boshqa amallar' orqali A4 formatdagi chiroyli test varaqasi va javoblar kalitini yuklab oling.\n\n"
-        "3️⃣ <b>Guruhda bellashuv (QuizBot formati):</b>\n"
-        "Guruhda <code>/poll</code> buyrug'i orqali a'zolar bilan taymerli sinxron o'yin o'tkazing va yakuniy jonli reytingga ega bo'ling!"
+        "1️⃣ <b>Test tuzish:</b>\n"
+        "• <b>🎲 Test tuzish</b> tugmasini bosing yoki <code>/newquiz</code> buyrug'ini yuboring.\n"
+        "• <b>Mavzu bo‘yicha:</b> Shunchaki mavzu/fanni yozing, AI testni o‘zi tuzadi.\n"
+        "• <b>Manba orqali:</b> PDF, Word, rasm, audio yoki havola yuboring, AI manba asosida tuzadi.\n\n"
+        "2️⃣ <b>Testni boshlash va ishlash:</b>\n"
+        "• Test kartochkasi chiqqach <b>«Men tayyorman!»</b> tugmasini bosing.\n"
+        "• Testni to‘xtatish uchun <code>/stop</code> buyrug‘ini yuboring.\n\n"
+        "3️⃣ <b>Do'stlarga va guruhga ulashish:</b>\n"
+        "• Test tugagach <b>«Do'stlarga ulashish»</b> tugmasi orqali testni istalgan do'st yoki guruhga yuborishingiz mumkin!"
     )
     kb = get_back_to_menu_keyboard()
     if isinstance(event, CallbackQuery):
@@ -108,7 +106,7 @@ async def handle_home(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
     text = (
         "🏠 <b>Asosiy menyu</b>\n\n"
-        "👇 <b>Kerakli bo'limni tanlang yoki fayl/mavzuni to'g'ridan-to'g'ri yuboring:</b>"
+        "👇 <b>Kerakli bo'limni tanlang:</b>"
     )
     if callback.message:
         await callback.message.edit_text(text, reply_markup=get_main_menu_keyboard(), parse_mode="HTML")
@@ -159,11 +157,11 @@ async def handle_history(event: Message | CallbackQuery, bot: Bot) -> None:
     if not quizzes:
         text = (
             "📜 <b>Siz hali birorta ham test tuzmadingiz.</b>\n\n"
-            "Bosh menyuga qaytib, o'zingiz xohlagan mavzuda birinchi testingizni tuzing!"
+            "«Test tuzish» tugmasi orqali birinchi testingizni yarating!"
         )
         kb = InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="🎲 Yangi test tuzish", callback_data="menu:topic")],
+                [InlineKeyboardButton(text="🎲 Test tuzish", callback_data="menu:create")],
                 [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="menu:home")],
             ]
         )
@@ -175,7 +173,7 @@ async def handle_history(event: Message | CallbackQuery, bot: Bot) -> None:
 
     text = (
         "📜 <b>Siz tuzgan testlar ro'yxati:</b>\n\n"
-        "<i>Quyidagi tugmalardan birini tanlab, testni darhol yechishingiz, taymerini o'zgartirishingiz, guruhga tashlashingiz yoki yuklab olishingiz mumkin:</i> 👇"
+        "<i>Testni boshlash uchun quyidagilardan birini tanlang:</i> 👇"
     )
 
     rows = []
@@ -192,7 +190,7 @@ async def handle_history(event: Message | CallbackQuery, bot: Bot) -> None:
         ])
 
     rows.append([
-        InlineKeyboardButton(text="🎲 Yangi test tuzish", callback_data="menu:topic"),
+        InlineKeyboardButton(text="🎲 Test tuzish", callback_data="menu:create"),
         InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="menu:home"),
     ])
 
