@@ -25,11 +25,13 @@ async def handle_menu_channels(callback: CallbackQuery, state: FSMContext, bot: 
     bot_info = await bot.get_me()
 
     text = (
-        "📢 <b>Telegram Kanallarga Avtomatik Test Rejalashtirish</b>\n\n"
-        f"Bot har kuni yoki har 12 soatda kanalingizga AI yordamida yangi, takrorlanmagan testlarni o'zi avtomatik joylab borishi mumkin!\n\n"
-        f"📌 <b>Buning uchun:</b>\n"
-        f"1. Botni (@{bot_info.username}) o'z kanalingizga <b>Administrator (xabar yuborish ruxsati bilan)</b> qilib qo'shing.\n"
-        f"2. Quyidagi tugma orqali kanalingiz username yoki ID sini va mavzuni kiriting.\n\n"
+        "📢 <b>Guruh va Kanallar bilan ishlash</b>\n\n"
+        "👥 <b>Guruhlarda viktorina (Musobaqa):</b>\n"
+        f"1. Botni guruhingizga qo'shing (@{bot_info.username}).\n"
+        "2. Guruhda <code>/poll</code> buyrug'ini yuboring va testni tanlang — bot taymerli sinxron o'yin o'tkazib beradi!\n\n"
+        "📢 <b>Kanallarga avtomatik test joylash:</b>\n"
+        "Bot har kuni yoki har 12 soatda kanalingizga yangi, takrorlanmagan testlarni avtomatik joylab borishi mumkin.\n"
+        "• Botni kanalingizga Administrator qilib qo'shing va quyidagi tugma orqali kanalni ulang:\n\n"
     )
 
     rows = []

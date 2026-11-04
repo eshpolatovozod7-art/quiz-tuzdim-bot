@@ -6,7 +6,7 @@ from aiogram.filters import CommandStart, Command, CommandObject
 from aiogram.fsm.context import FSMContext
 
 from database.db import register_or_update_user, get_user_stats, get_user_quizzes, get_quiz, get_group_leaderboard
-from keyboards.inline_keyboards import get_main_menu_keyboard, get_quiz_card_keyboard
+from keyboards.inline_keyboards import get_main_menu_keyboard, get_quiz_card_keyboard, get_back_to_menu_keyboard
 from handlers.quiz_play import send_quiz_polls_to_chat, send_group_quiz_lobby
 
 router = Router()
@@ -81,17 +81,8 @@ async def handle_start(message: Message, command: CommandObject, bot: Bot, state
     first_name = html.escape(user.first_name if user else "Foydalanuvchi")
     text = (
         f"Assalomu alaykum, <b>{first_name}</b>! 👋\n\n"
-        f"🎯 <b>Quiz Tuzdim Bot</b> ga xush kelibsiz!\n"
-        f"Bu bot orqali siz sun'iy intellekt (Gemini AI) yordamida har qanday manbadan professional test (viktorina)lar tuza olasiz.\n\n"
-        f"✨ <b>Imkoniyatlar:</b>\n"
-        f"• 🎲 Har qanday mavzu yoki fandan test tuzish\n"
-        f"• 📁 <b>PDF, Word (DOCX), TXT</b> darsliklardan test olish\n"
-        f"• 🎥 <b>Video darsliklar</b> (ko'rib/eshitib test tuzadi)\n"
-        f"• 🎙 <b>Ovozli xabar va audio ma'ruzalar</b>\n"
-        f"• 📸 <b>Doska, konspekt va kitob sahifalari fotosi</b>\n"
-        f"• 📄 <b>Chop etishga tayyor A4 PDF va Word</b> varaqasi\n"
-        f"• 🔄 Xatolar ustida qayta ishlash va natijalar tahlili\n\n"
-        f"Quyidagi menyudan kerakli bo'limni tanlang: 👇"
+        f"🎯 <b>Quiz Tuzdim Bot</b> — Sun'iy intellekt (Gemini AI) yordamida tezkor va professional testlar tuzuvchi yordamchingiz.\n\n"
+        f"👇 <b>Quyidagi bo'limlardan birini tanlang yoki chatga to'g'ridan-to'g'ri mavzu/fayl yuboring:</b>"
     )
     await message.answer(text, reply_markup=get_main_menu_keyboard(), parse_mode="HTML")
 
@@ -101,19 +92,20 @@ async def handle_start(message: Message, command: CommandObject, bot: Bot, state
 async def handle_help(event: Message | CallbackQuery) -> None:
     """Yordam va yo'riqnoma."""
     text = (
-        "📖 <b>Quiz Tuzdim Bot — Qo'llanma:</b>\n\n"
-        "1️⃣ <b>Test tuzishning 5 xil yo'li:</b>\n"
-        "• <b>Mavzu bo'yicha:</b> Shunchaki fanni yoki mavzuni yozing (masalan: <i>Kvadrat tenglamalar</i> yoki <i>Python OOP</i>).\n"
-        "• <b>Hujjat tashlash:</b> Botga PDF yoki Word fayl yuboring — bot hujjat mazmunidan test tuzib beradi.\n"
-        "• <b>Video tashlash:</b> Video darslik yuboring — bot videoni ko'rib va tushunib savollar tuzadi.\n"
-        "• <b>Audio / Ovoz:</b> Ovozli xabar yoki mp3 audio yuboring — bot eshitib test tayyorlaydi.\n"
-        "• <b>Rasm tashlash:</b> Kitob yoki konspekt rasmini tashlang.\n\n"
-        "2️⃣ <b>Chop etish uchun PDF / Word:</b>\n"
-        "Test tayyor bo'lgach, 'PDF test varaqasi' tugmasini bosing. Bot maktab va oliygohlarga mos A4 formatdagi chiroyli test varaqasi va oxirida javoblar kalitini taqdim etadi!\n\n"
-        "3️⃣ <b>Xatolar ustida ishlash:</b>\n"
-        "Test yechish yakunida agar xato javoblar bo'lsa, bot sizga faqat adashgan savollaringizdan qayta imtihon olish imkonini beradi."
+        "📖 <b>Quiz Tuzdim Bot — Foydalanish Qo'llanmasi:</b>\n\n"
+        "1️⃣ <b>Test tuzish usullari:</b>\n"
+        "• <b>🎲 Mavzu bo'yicha:</b> Istalgan fan yoki dars mavzusini chatga yozing.\n"
+        "• <b>📄 Hujjatdan (PDF, Word):</b> Darslik yoki konspekt faylini yuboring.\n"
+        "• <b>📸 Rasmdan:</b> Doska, daftar yoki kitob sahifasi fotosini tashlang.\n"
+        "• <b>🎙 Audio / Ovozdan:</b> Ovozli xabar yoki audio darslik yuboring.\n"
+        "• <b>🎥 Video darslikdan:</b> Video darslik faylini yuboring.\n"
+        "• <b>🔗 Havoladan:</b> YouTube video yoki internet maqola linkini yuboring.\n\n"
+        "2️⃣ <b>Chop etishga tayyor A4 PDF va Word:</b>\n"
+        "Test tayyor bo'lgach, 'Boshqa amallar' orqali A4 formatdagi chiroyli test varaqasi va javoblar kalitini yuklab oling.\n\n"
+        "3️⃣ <b>Guruhda bellashuv (QuizBot formati):</b>\n"
+        "Guruhda <code>/poll</code> buyrug'i orqali a'zolar bilan taymerli sinxron o'yin o'tkazing va yakuniy jonli reytingga ega bo'ling!"
     )
-    kb = get_main_menu_keyboard()
+    kb = get_back_to_menu_keyboard()
     if isinstance(event, CallbackQuery):
         await event.answer()
         if event.message:
@@ -129,7 +121,7 @@ async def handle_home(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
     text = (
         "🏠 <b>Asosiy menyu</b>\n\n"
-        "Qanday manbadan test tuzmoqchisiz yoki qaysi bo'limga o'tmoqchisiz? Tanlang: 👇"
+        "👇 <b>Kerakli bo'limni tanlang yoki fayl/mavzuni to'g'ridan-to'g'ri yuboring:</b>"
     )
     if callback.message:
         await callback.message.edit_text(text, reply_markup=get_main_menu_keyboard(), parse_mode="HTML")
@@ -154,14 +146,15 @@ async def handle_stats(event: Message | CallbackQuery) -> None:
         "📊 <b>Sizning shaxsiy statistikangiz:</b>\n\n"
         f"🎯 Tuzilgan testlar soni: <b>{stats['tests_created']} ta</b>\n"
         f"📝 Ishlangan testlar: <b>{stats['tests_taken']} marta</b>\n"
-        f"📈 O'rtacha o'zlashtirish foizi: <b>{stats['avg_score']}%</b>\n"
+        f"📈 O'rtacha o'zlashtirish: <b>{stats['avg_score']}%</b>\n"
         f"⏱ Jami sarflangan vaqt: <b>{time_str}</b>\n\n"
         f"<i>O'z ustingizda ishlashda davom eting!</i> 💪"
     )
+    kb = get_back_to_menu_keyboard()
     if isinstance(event, CallbackQuery) and event.message:
-        await event.message.edit_text(text, reply_markup=get_main_menu_keyboard(), parse_mode="HTML")
+        await event.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
     else:
-        await event.answer(text, reply_markup=get_main_menu_keyboard(), parse_mode="HTML")
+        await event.answer(text, reply_markup=kb, parse_mode="HTML")
 
 
 @router.message(Command("tests", "myquizzes", "history"))

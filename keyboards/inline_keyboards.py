@@ -2,37 +2,60 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 
 def get_main_menu_keyboard() -> InlineKeyboardMarkup:
-    """Asosiy menyu klaviaturasi."""
+    """Asosiy menyu klaviaturasi (toza, kategoriyalangan va qulay)."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🎲 Mavzu bo'yicha test", callback_data="menu:topic"),
+                InlineKeyboardButton(text="📁 Fayl / Hujjatdan test", callback_data="menu:files"),
+            ],
+            [
+                InlineKeyboardButton(text="🏛 DTM & Imtihonlar", callback_data="menu:presets"),
+                InlineKeyboardButton(text="🔗 YouTube / Havoladan", callback_data="menu:url"),
+            ],
             [
                 InlineKeyboardButton(text="🔥 Kun Testi (Streak)", callback_data="menu:daily"),
                 InlineKeyboardButton(text="⚔️ 1 vs 1 Duel (Jang)", callback_data="menu:duel"),
             ],
             [
-                InlineKeyboardButton(text="🎲 Mavzu bo'yicha", callback_data="menu:topic"),
-                InlineKeyboardButton(text="🏛 DTM & Imtihonlar", callback_data="menu:presets"),
-            ],
-            [
-                InlineKeyboardButton(text="📁 PDF / Word hujjatdan", callback_data="menu:doc"),
-                InlineKeyboardButton(text="🔗 YouTube / Havoladan", callback_data="menu:url"),
-            ],
-            [
-                InlineKeyboardButton(text="🎥 Video darslikdan", callback_data="menu:video"),
-                InlineKeyboardButton(text="🎙 Ovoz / Audiodan", callback_data="menu:audio"),
-            ],
-            [
-                InlineKeyboardButton(text="📸 Rasmdan (Doska/Kitob)", callback_data="menu:image"),
-                InlineKeyboardButton(text="📋 Matndan test tuzish", callback_data="menu:text"),
-            ],
-            [
-                InlineKeyboardButton(text="📢 Kanalga avtoposting", callback_data="menu:channels"),
+                InlineKeyboardButton(text="📜 Mening testlarim", callback_data="menu:history"),
                 InlineKeyboardButton(text="📊 Mening statistikam", callback_data="menu:stats"),
             ],
             [
-                InlineKeyboardButton(text="📜 Mening testlarim", callback_data="menu:history"),
+                InlineKeyboardButton(text="📢 Guruh va Kanallar", callback_data="menu:channels"),
                 InlineKeyboardButton(text="ℹ️ Qo'llanma", callback_data="menu:help"),
             ],
+        ]
+    )
+
+
+def get_files_menu_keyboard() -> InlineKeyboardMarkup:
+    """Fayl va hujjat turlari sub-menyusi."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📄 PDF yoki Word (.docx)", callback_data="menu:doc"),
+                InlineKeyboardButton(text="📸 Rasm / Fotosurat", callback_data="menu:image"),
+            ],
+            [
+                InlineKeyboardButton(text="🎙 Ovoz / Audio (MP3)", callback_data="menu:audio"),
+                InlineKeyboardButton(text="🎥 Video darslik", callback_data="menu:video"),
+            ],
+            [
+                InlineKeyboardButton(text="📋 Matn (Konspekt)", callback_data="menu:text"),
+            ],
+            [
+                InlineKeyboardButton(text="🔙 Bosh menyuga qaytish", callback_data="menu:home"),
+            ],
+        ]
+    )
+
+
+def get_back_to_menu_keyboard() -> InlineKeyboardMarkup:
+    """Kutish va yo'riqnoma bosqichlari uchun qisqa orqaga qaytish klaviaturasi."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Bosh menyuga qaytish", callback_data="menu:home")]
         ]
     )
 
