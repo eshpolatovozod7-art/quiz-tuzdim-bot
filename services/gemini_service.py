@@ -80,7 +80,10 @@ class GeminiService:
 
         prompt = (
             f"Siz professional testolog, pedagog va metodistsiz.\n"
-            f"Quyida berilgan manba asosida aynan {count} ta sifatli, mantiqan to'g'ri va qiziqarli test (viktorina) savollarini tuzing.\n\n"
+            f"Quyida berilgan manba asosida ROPPA-ROSA {count} TA sifatli, mantiqan to'g'ri va qiziqarli test (viktorina) savollarini tuzing.\n\n"
+            f"DIQQAT (SAVOLLAR SONI BO'YICHA QAT'IY TALAB):\n"
+            f"Siz ROPPA-ROSA {count} TA savol tuzishingiz SHART! Kam ham bo'lmasin, ko'p ham bo'lmasin, aynan {count} ta bo'lsin.\n"
+            f"JSON massivida aynan {count} ta savol obyekti bo'lishi shart (len(array) == {count}).\n\n"
             f"PARAMETRLAR:\n"
             f"- Qiyinlik darajasi: {diff_uz}\n"
             f"- Har bir savoldagi variantlar soni: {options_count} ta\n\n"
@@ -92,7 +95,7 @@ class GeminiService:
             f"5. BUTUN HUJJATNI QAMRAB OLING: Savollarni faqat hujjat boshidan emas, butun matn bo'ylab (boshi, o'rtasi, oxiri, turli darslar) aralash holda tanlang.\n"
             f"6. Til qoidasi: Agar mavzu xorijiy til (ingliz tili, rus tili va h.k.) o'rganishga oid bo'lsa, test savollari va variantlari o'sha o'rganilayotgan tilda (yoki grammatika/lug'at topshirig'i shaklida), izohi (explanation) esa o'zbek tilida tushuntirilsin. Boshqa fanlar uchun savollar to'liq o'zbek tilida bo'lsin.\n"
             f"{listening_clause}"
-            f"7. Javobingiz FAQAT quyidagi JSON array formatida bo'lsin:\n"
+            f"7. Javobingiz FAQAT aynan {count} ta elementdan iborat JSON array formatida bo'lsin:\n"
             "[\n"
             "  {\n"
             f"{listening_sample_json}"
@@ -160,9 +163,14 @@ class GeminiService:
             for model_name in unique_models:
                 try:
                     config = types.GenerateContentConfig(
-                        system_instruction="Siz bilimli, xolis va tajribali pedagog-testologsiz. Hech qachon xato ma'lumot bermang.",
+                        system_instruction=(
+                            f"Siz bilimli, xolis va tajribali pedagog-testologsiz. "
+                            f"Sizdan so'ralgan roppa-rosa {count} ta savolni to'liq shakllantiring. "
+                            f"JSON arrayida aynan {count} ta obyekt bo'lsin."
+                        ),
                         response_mime_type="application/json",
                         temperature=0.7,
+                        max_output_tokens=max(4096, count * 450),
                     )
                     res = await self.client.aio.models.generate_content(
                         model=model_name,
@@ -187,7 +195,11 @@ class GeminiService:
                             parsed = [parsed]
 
                     import re
+                    from difflib import SequenceMatcher
+
                     valid_questions = []
+                    seen_clean: set[str] = set()
+
                     for idx, item in enumerate(parsed):
                         if not isinstance(item, dict):
                             continue
@@ -199,17 +211,32 @@ class GeminiService:
                         if not q_text or len(opts) < 2:
                             continue
 
-                        # Takrorlanishni tekshirish (Deduplication)
                         clean_check = re.sub(r"^\[\d+/\d+\]\s*", "", q_text).strip().lower()
+
+                        # Takrorlanishni aniq va xolis tekshirish
                         is_dup = False
-                        if used_questions:
-                            for uq in used_questions:
-                                if clean_check == uq or (len(clean_check) > 20 and clean_check[:30] in uq) or (len(uq) > 20 and uq[:30] in clean_check):
+                        if clean_check in seen_clean:
+                            is_dup = True
+                        else:
+                            for prev in seen_clean:
+                                if clean_check == prev or (len(clean_check) > 25 and len(prev) > 25 and SequenceMatcher(None, clean_check, prev).ratio() > 0.90):
                                     is_dup = True
-                                    logger.info("Takroriy savol aniqlandi va o'chirildi: %s", q_text)
                                     break
+
+                        if not is_dup and used_questions:
+                            if clean_check in used_questions:
+                                is_dup = True
+                            else:
+                                for uq in used_questions:
+                                    if clean_check == uq or (len(clean_check) > 25 and len(uq) > 25 and SequenceMatcher(None, clean_check, uq).ratio() > 0.90):
+                                        is_dup = True
+                                        logger.info("Avvalgi ishlatilgan savol bilan o'xshashlik topildi: %s", q_text)
+                                        break
+
                         if is_dup:
                             continue
+
+                        seen_clean.add(clean_check)
 
                         # Variantlarni moslashtirish
                         target_opts = opts[:options_count]
@@ -232,8 +259,19 @@ class GeminiService:
                     if len(valid_questions) >= count:
                         return valid_questions[:count]
                     elif valid_questions:
-                        # Agar qisman savollar to'plangan bo'lsa, qolganini zaxiradan to'ldirish
-                        return valid_questions
+                        # Agar AI barcha savollarni to'liq bermagan bo'lsa (masalan 15 ta o'rniga 8 ta),
+                        # yetishmayotgan qismini zaxira bankidan to'ldirib aynan 'count' ta qilib qaytaramiz
+                        from services.quiz_service import get_offline_quiz_questions
+                        missing = count - len(valid_questions)
+                        logger.info("Gemini %d ta savol berdi, kerak: %d ta. Qolgan %d ta savol to'ldirilmoqda...", len(valid_questions), count, missing)
+                        extra_questions = get_offline_quiz_questions(
+                            topic=topic or "Umumiy",
+                            count=missing,
+                            options_count=options_count,
+                            used_questions=(used_questions or set()) | seen_clean,
+                        )
+                        valid_questions.extend(extra_questions[:missing])
+                        return valid_questions[:count]
 
                 except Exception as err:
                     logger.warning("Gemini model %s da test tuzishda xatolik: %s", model_name, err)

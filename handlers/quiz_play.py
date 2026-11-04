@@ -215,6 +215,17 @@ async def handle_next_batch_quiz(callback: CallbackQuery, bot: Bot) -> None:
             options_count=options_count,
             used_questions=used_q,
         )
+    elif len(questions) < count:
+        needed = count - len(questions)
+        import re
+        used_now = (used_q or set()) | {re.sub(r"^\[\d+/\d+\]\s*", "", q["question"]).strip().lower() for q in questions}
+        extra = get_offline_quiz_questions(
+            quiz.get("topic") or source_title,
+            count=needed,
+            options_count=options_count,
+            used_questions=used_now,
+        )
+        questions.extend(extra[:needed])
 
     try:
         await status_msg.delete()

@@ -533,6 +533,19 @@ async def handle_qcfg_timer(callback: CallbackQuery, bot: Bot, state: FSMContext
     if not questions:
         logger.info("Gemini savol bermadi, oflayn zaxira savollardan foydalanilmoqda")
         questions = get_offline_quiz_questions(topic or source_label, count=cnt, options_count=opts)
+    elif len(questions) < cnt:
+        # Savollar soni so'ralgandan kam bo'lsa, to'liq cnt taga yetkazish
+        needed = cnt - len(questions)
+        logger.info("Savollar soni kam (%d/%d), yana %d ta to'ldirilmoqda...", len(questions), cnt, needed)
+        import re
+        used_now = (used_q or set()) | {re.sub(r"^\[\d+/\d+\]\s*", "", q["question"]).strip().lower() for q in questions}
+        extra = get_offline_quiz_questions(
+            topic or source_label,
+            count=needed,
+            options_count=opts,
+            used_questions=used_now,
+        )
+        questions.extend(extra[:needed])
 
     if not questions:
         if status_msg:
