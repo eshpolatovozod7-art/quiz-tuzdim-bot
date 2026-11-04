@@ -239,44 +239,17 @@ def get_quiz_card_keyboard(
 
 def get_quiz_finish_keyboard(
     quiz_id: str,
-    has_wrong: bool = False,
-    has_media: bool = True,
     bot_username: str = "quiz_tuzdimbot",
-    correct: int = 0,
-    total: int = 0,
-    percentage: int = 0,
+    **kwargs: Any,
 ) -> InlineKeyboardMarkup:
-    """Test yakunlanganda natijalar klaviaturasi."""
-    rows = []
-    if percentage >= 70 or (total > 0 and correct >= total * 0.7):
-        rows.append([
-            InlineKeyboardButton(
-                text="🎓 Rasmiy Sertifikatni yuklab olish 🏆",
-                callback_data=f"qexp:cert:{quiz_id}:{correct}:{total}:{percentage}",
-            )
-        ])
-    rows.append([
-        InlineKeyboardButton(text="🔄 Qaytadan boshlash", callback_data=f"qrun:start:{quiz_id}")
-    ])
-    if has_wrong:
-        rows.append([
-            InlineKeyboardButton(text="💡 Xatolar ustida ishlash 🎯", callback_data=f"qrun:retry_wrong:{quiz_id}"),
-            InlineKeyboardButton(text="🧠 AI Repetitor tahlili", callback_data=f"qexp:tutor:{quiz_id}"),
-        ])
-    if has_media:
-        rows.append([
-            InlineKeyboardButton(text="🔄 Shu manbadan keyingi yangi testlar 🎯", callback_data=f"qrun:next_batch:{quiz_id}")
-        ])
-    rows.append([
-        InlineKeyboardButton(text="👥 Guruhga tashlash (Quiz Poll)", url=f"https://t.me/{bot_username}?startgroup=poll_{quiz_id}"),
-        InlineKeyboardButton(text="📩 Barcha testlarni tashlash", callback_data=f"qrun:dump:{quiz_id}"),
-    ])
-    rows.append([
-        InlineKeyboardButton(text="📄 PDF test varaqasi", callback_data=f"qexp:pdf:{quiz_id}"),
-        InlineKeyboardButton(text="📝 Word (.docx)", callback_data=f"qexp:docx:{quiz_id}"),
-    ])
-    rows.append([
-        InlineKeyboardButton(text="🎲 Yangi test tuzish", callback_data="menu:topic"),
-        InlineKeyboardButton(text="🏠 Asosiy menyu", callback_data="menu:home"),
-    ])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+    """QuizBot kabi test yakunlanganda yagona 'Do'stlarga ulashish' tugmasi."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Do'stlarga ulashish",
+                    switch_inline_query=f"quiz_{quiz_id}",
+                )
+            ]
+        ]
+    )

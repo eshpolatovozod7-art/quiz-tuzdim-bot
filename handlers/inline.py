@@ -28,29 +28,22 @@ async def handle_inline_query(inline_query: InlineQuery, bot: Bot) -> None:
         quiz_id = raw_query.replace("quiz_", "").replace("q_", "").strip()
         quiz = await get_quiz(quiz_id)
         if quiz:
+            from handlers.quiz_play import format_quiz_ready_text
             title = quiz["title"]
             count = quiz["question_count"]
-            timer = f"{quiz.get('timer_seconds', 0)}s" if quiz.get("timer_seconds", 0) > 0 else "Cheklovsiz"
-            escaped_title = html.escape(title, quote=False)
-
-            text = (
-                f"🎲 <b>\"{escaped_title}\" testi</b>\n\n"
-                f"📊 <b>Savollar soni:</b> {count} ta\n"
-                f"⏱ <b>Vaqt:</b> {timer}\n\n"
-                f"<i>Ushbu testni boshlash uchun quyidagi tugmani bosing:</i> 👇"
-            )
+            timer = f"{quiz.get('timer_seconds', 0)}s" if quiz.get("timer_seconds", 0) > 0 else "15s"
+            text = format_quiz_ready_text(quiz)
 
             kb = InlineKeyboardMarkup(
                 inline_keyboard=[
-                    [InlineKeyboardButton(text="▶️ Bu testni boshlash", url=f"https://t.me/{bot_username}?start=quiz_{quiz_id}")],
-                    [InlineKeyboardButton(text="📤 Do'stlarga ulashish", switch_inline_query=f"quiz_{quiz_id}")],
+                    [InlineKeyboardButton(text="Bu testni boshlash", url=f"https://t.me/{bot_username}?start=quiz_{quiz_id}")],
                 ]
             )
 
             result = InlineQueryResultArticle(
                 id=_make_id(f"quiz_{quiz_id}"),
-                title=f"🎲 {title} ({count} ta savol)",
-                description=f"⏱ {timer} | Testni guruhda yoki shaxsiyda boshlash",
+                title=f"🎲 “{title}” ({count} ta savol)",
+                description=f"⏱ {timer} | Testga tayyorlaning",
                 input_message_content=InputTextMessageContent(
                     message_text=text,
                     parse_mode="HTML",

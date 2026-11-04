@@ -421,7 +421,7 @@ async def handle_group_quiz_start(callback: CallbackQuery, bot: Bot) -> None:
     for count in [3, 2, 1]:
         try:
             await callback.message.edit_text(
-                f"⏳ <b>«{title_clean}» viktorinasi boshlanmoqda!</b>\n\n"
+                f"⏳ <b>“{title_clean}”</b>\n\n"
                 f"Tayyorlaning: <b>{count}...</b> 🔔",
                 parse_mode="HTML"
             )
@@ -597,13 +597,13 @@ async def finish_group_quiz(chat_id: int, quiz: dict[str, Any], bot: Bot, sessio
 
     if not scores_dict:
         finish_text = (
-            f"🏁 <b>«{title}» viktorinasi yakunlandi!</b>\n\n"
+            f"🏁 <b>“{title}” viktorinasi yakunlandi!</b>\n\n"
             f"📊 Jami savollar: {total} ta\n"
             f"<i>Hech kim savollarga javob bermadi.</i>"
         )
         kb = InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="🔄 Qaytadan boshlash", callback_data=f"qgrp:start:{quiz_id}")]
+                [InlineKeyboardButton(text="Do'stlarga ulashish", switch_inline_query=f"quiz_{quiz_id}")]
             ]
         )
         await bot.send_message(chat_id=chat_id, text=finish_text, reply_markup=kb, parse_mode="HTML")
@@ -627,23 +627,17 @@ async def finish_group_quiz(chat_id: int, quiz: dict[str, Any], bot: Bot, sessio
     winner_name = sorted_players[0]["name"]
 
     finish_text = (
-        f"🏆 <b>VIKTORINA YAKUNLANDI!</b>\n"
-        f"✦ • ──────────────────── • ✦\n"
-        f"📌 <b>Mavzu:</b> «{title}»\n"
-        f"📊 <b>Savollar:</b> {total} ta | 👥 <b>Ishtirokchilar:</b> {len(sorted_players)} nafar\n\n"
-        f"🎉 <b>G'olib:</b> <b>{html.escape(winner_name, quote=False)}</b> 👏\n\n"
+        f"🏆 <b>“{title}” viktorinasi yakunlandi!</b>\n\n"
+        f"📊 Savollar: {total} ta | 👥 Ishtirokchilar: {len(sorted_players)} nafar\n\n"
         f"<b>Ishtirokchilar natijalari:</b>\n"
         f"{leaderboard_str}\n\n"
-        f"<i>Barcha ishtirokchilarga rahmat!</i>"
+        f"<i>Barcha ishtirokchilarga rahmat!</i> 🎉"
     )
 
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="📊 Excel natijalar (.xlsx)", callback_data=f"gexp:excel:{chat_id}:{quiz_id}"),
-            ],
-            [
-                InlineKeyboardButton(text="🔄 Qaytadan o'ynash", callback_data=f"qgrp:start:{quiz_id}"),
+                InlineKeyboardButton(text="Do'stlarga ulashish", switch_inline_query=f"quiz_{quiz_id}")
             ]
         ]
     )
@@ -700,10 +694,6 @@ async def send_next_question(session_key: int, bot: Bot) -> None:
     c_id = q.get("correct_id", 0)
     expl = str(q.get("explanation", "")).strip()[:200]
 
-    stop_kb = InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="🛑 Testni to'xtatish", callback_data="qrun:stop")]]
-    )
-
     poll_kwargs = {
         "chat_id": chat_id,
         "question": q_title[:300],
@@ -711,7 +701,6 @@ async def send_next_question(session_key: int, bot: Bot) -> None:
         "type": "quiz",
         "correct_option_id": c_id,
         "is_anonymous": False,
-        "reply_markup": stop_kb,
     }
     if expl:
         poll_kwargs["explanation"] = expl
@@ -913,28 +902,18 @@ async def finish_quiz(session_key: int, bot: Bot) -> None:
 
     has_wrong = len(session["wrong_questions"]) > 0
 
+    clean_title = html.escape(title, quote=False)
     result_text = (
-        f"🏁 <b>\"{escaped_title}\" testi yakunlandi!</b>\n\n"
-        f"📊 <b>Natijangiz:</b>\n"
-        f"✅ To'g'ri javoblar: <b>{correct} ta</b> ({pct}%)\n"
-        f"❌ Noto'g'ri javoblar: <b>{wrong} ta</b>\n"
-        f"⏱ Sarflangan vaqt: <b>{time_str}</b>\n"
-        f"🎖 Baho: <b>{grade}</b>\n\n"
-        f"<i>Quyidagi tugmalar orqali xatolar ustida ishlashingiz yoki test varaqasini yuklab olishingiz mumkin:</i>"
+        f"🏁 <b>“{clean_title}” testi yakunlandi!</b>\n\n"
+        f"{total} ta savoldan <b>{correct}</b> tasiga to‘g‘ri javob berdingiz: <b>{time_str}</b>\n\n"
+        f"{grade}"
     )
 
     bot_info = await bot.get_me()
     await bot.send_message(
         chat_id=chat_id,
         text=result_text,
-        reply_markup=get_quiz_finish_keyboard(
-            quiz_id,
-            has_wrong=has_wrong,
-            bot_username=bot_info.username or "quiz_tuzdimbot",
-            correct=correct,
-            total=total,
-            percentage=pct,
-        ),
+        reply_markup=get_quiz_finish_keyboard(quiz_id, bot_info.username or "quiz_tuzdimbot"),
         parse_mode="HTML",
     )
 

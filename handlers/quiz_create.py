@@ -5,6 +5,7 @@ import os
 import uuid
 from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery
+from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 
 from config import UPLOADS_DIR
@@ -34,6 +35,20 @@ from utils.states import QuizCreateState
 logger = logging.getLogger(__name__)
 router = Router()
 gemini_service = GeminiService()
+
+
+@router.message(Command("newquiz"))
+async def handle_newquiz_command(message: Message, state: FSMContext) -> None:
+    """QuizBot kabi /newquiz orqali test yaratish."""
+    await state.clear()
+    await state.set_state(QuizCreateState.waiting_topic)
+    text = (
+        "🎲 <b>Yangi test yaratish:</b>\n\n"
+        "Quyidagi mashhur fanlardan birini tanlang yoki test mavzusi/nomini chatga yozing:\n"
+        "<i>(Shuningdek, PDF, Word, rasm yoki audio fayl tashlasangiz ham bo'ladi)</i>\n\n"
+        "👇 <b>Fanni tanlang yoki mavzuni yozing:</b>"
+    )
+    await message.answer(text, reply_markup=get_popular_topics_keyboard(), parse_mode="HTML")
 
 
 # ---------------- Menyu bo'limlari ---------------- #

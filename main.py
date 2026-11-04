@@ -70,13 +70,16 @@ async def set_bot_commands(bot: Bot) -> None:
     """Bot buyruqlari menyusi."""
     commands = [
         BotCommand(command="start", description="Botni ishga tushirish va asosiy menyu"),
-        BotCommand(command="daily", description="Har kungi Kun Testi (Streak)"),
-        BotCommand(command="duel", description="1 vs 1 Do'stona Viktorina Jangi"),
-        BotCommand(command="poll", description="Guruhga test (so'rovnoma)larni tashlash"),
-        BotCommand(command="top", description="Guruh reytingi va peshqadamlar jadvali"),
-        BotCommand(command="excel", description="Guruh natijalarini Excel jadvalda olish"),
-        BotCommand(command="help", description="Qo'llanma va yordam"),
-        BotCommand(command="stats", description="Shaxsiy testlar statistikasi"),
+        BotCommand(command="newquiz", description="🎲 Yangi test yaratish"),
+        BotCommand(command="quizzes", description="📜 Mening testlarim"),
+        BotCommand(command="stop", description="🛑 Faol testni to'xtatish"),
+        BotCommand(command="daily", description="⚡️ Kun Testi (Streak)"),
+        BotCommand(command="duel", description="⚔️ 1 vs 1 Viktorina Jangi"),
+        BotCommand(command="poll", description="👥 Guruhga testlarni tashlash"),
+        BotCommand(command="top", description="🏆 Guruh peshqadamlar jadvali"),
+        BotCommand(command="excel", description="📊 Natijalarni Excelda olish"),
+        BotCommand(command="help", description="ℹ️ Qo'llanma va yordam"),
+        BotCommand(command="stats", description="📈 Shaxsiy statistika"),
     ]
     await bot.set_my_commands(commands)
 

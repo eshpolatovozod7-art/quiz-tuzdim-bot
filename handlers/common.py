@@ -144,7 +144,7 @@ async def handle_stats(event: Message | CallbackQuery) -> None:
         await event.answer(text, reply_markup=kb, parse_mode="HTML")
 
 
-@router.message(Command("tests", "myquizzes", "history"))
+@router.message(Command("tests", "myquizzes", "quizzes", "history"))
 @router.message(F.text.lower().in_(["mening testlarim", "testlarim", "mening testlarim 📜", "📜 mening testlarim"]))
 @router.callback_query(F.data == "menu:history")
 async def handle_history(event: Message | CallbackQuery, bot: Bot) -> None:
