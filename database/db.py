@@ -64,6 +64,34 @@ async def init_db() -> None:
             )
         """)
 
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS group_scores (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                group_id INTEGER,
+                quiz_id TEXT,
+                user_id INTEGER,
+                user_name TEXT,
+                score INTEGER DEFAULT 0,
+                total_answered INTEGER DEFAULT 0,
+                last_active REAL,
+                UNIQUE(group_id, quiz_id, user_id)
+            )
+        """)
+
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS channel_schedules (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                channel_id TEXT,
+                channel_title TEXT,
+                topic TEXT,
+                question_count INTEGER DEFAULT 3,
+                interval_hours INTEGER DEFAULT 24,
+                last_posted REAL DEFAULT 0,
+                is_active INTEGER DEFAULT 1
+            )
+        """)
+
         await db.commit()
     logger.info("Ma'lumotlar bazasi tayyor: %s", DB_PATH)
 
@@ -271,3 +299,125 @@ async def get_user_used_questions(user_id: int, source_label: str) -> set[str]:
                     pass
 
     return used
+
+
+# ---------------- Guruh Reytingi (Leaderboard) ---------------- #
+
+async def record_group_answer(
+    group_id: int,
+    quiz_id: str,
+    user_id: int,
+    user_name: str,
+    is_correct: bool,
+) -> None:
+    """Guruh a'zosining bergan javobini hisoblab borish."""
+    now = time.time()
+    inc_score = 1 if is_correct else 0
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            INSERT INTO group_scores (group_id, quiz_id, user_id, user_name, score, total_answered, last_active)
+            VALUES (?, ?, ?, ?, ?, 1, ?)
+            ON CONFLICT(group_id, quiz_id, user_id) DO UPDATE SET
+                user_name = excluded.user_name,
+                score = score + ?,
+                total_answered = total_answered + 1,
+                last_active = excluded.last_active
+        """, (group_id, quiz_id, user_id, user_name, inc_score, now, inc_score))
+        await db.commit()
+
+
+async def get_group_leaderboard(group_id: int, quiz_id: str | None = None, limit: int = 10) -> list[dict[str, Any]]:
+    """Guruhdagi eng yuqori natijali ishtirokchilar ro'yxatini olish."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        if quiz_id:
+            query = """
+                SELECT user_name, score, total_answered, last_active
+                FROM group_scores
+                WHERE group_id = ? AND quiz_id = ?
+                ORDER BY score DESC, total_answered ASC, last_active ASC
+                LIMIT ?
+            """
+            params = (group_id, quiz_id, limit)
+        else:
+            query = """
+                SELECT user_name, SUM(score) as score, SUM(total_answered) as total_answered, MAX(last_active) as last_active
+                FROM group_scores
+                WHERE group_id = ?
+                GROUP BY user_id
+                ORDER BY score DESC, total_answered ASC
+                LIMIT ?
+            """
+            params = (group_id, limit)
+
+        async with db.execute(query, params) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(r) for r in rows]
+
+
+# ---------------- Kanallarga Avtoposting (Schedules) ---------------- #
+
+async def add_channel_schedule(
+    user_id: int,
+    channel_id: str,
+    channel_title: str,
+    topic: str,
+    question_count: int = 3,
+    interval_hours: int = 24,
+) -> int:
+    """Kanalga avtomatik test rejalashtirish."""
+    now = time.time()
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute("""
+            INSERT INTO channel_schedules (user_id, channel_id, channel_title, topic, question_count, interval_hours, last_posted, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+        """, (user_id, channel_id, channel_title, topic, question_count, interval_hours, now))
+        await db.commit()
+        return cursor.lastrowid
+
+
+async def get_due_channel_schedules() -> list[dict[str, Any]]:
+    """Vaqti kelgan kanal posting vazifalarini olish."""
+    now = time.time()
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("""
+            SELECT * FROM channel_schedules
+            WHERE is_active = 1 AND (? - last_posted) >= (interval_hours * 3600)
+        """, (now,)) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(r) for r in rows]
+
+
+async def update_channel_schedule_last_posted(schedule_id: int) -> None:
+    """Oxirgi yuborilgan vaqtni yangilash."""
+    now = time.time()
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE channel_schedules SET last_posted = ? WHERE id = ?",
+            (now, schedule_id),
+        )
+        await db.commit()
+
+
+async def get_user_channel_schedules(user_id: int) -> list[dict[str, Any]]:
+    """Foydalanuvchining kanallarga rejalashtirilgan barcha vazifalari."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM channel_schedules WHERE user_id = ? ORDER BY id DESC",
+            (user_id,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(r) for r in rows]
+
+
+async def delete_channel_schedule(schedule_id: int, user_id: int) -> None:
+    """Kanal avtoposting vazifasini o'chirish."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "DELETE FROM channel_schedules WHERE id = ? AND user_id = ?",
+            (schedule_id, user_id),
+        )
+        await db.commit()
+

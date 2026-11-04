@@ -12,7 +12,8 @@ from aiogram.types import BotCommand
 
 from config import BOT_TOKEN
 from database.db import init_db
-from handlers import common, quiz_create, quiz_play, export_handlers, inline
+from handlers import common, quiz_create, quiz_play, export_handlers, inline, channel_handlers
+from services.scheduler_service import channel_scheduler_worker
 
 # Loggingni sozlash
 logging.basicConfig(
@@ -61,6 +62,7 @@ async def set_bot_commands(bot: Bot) -> None:
     commands = [
         BotCommand(command="start", description="Botni ishga tushirish va asosiy menyu"),
         BotCommand(command="poll", description="Guruhga test (so'rovnoma)larni tashlash"),
+        BotCommand(command="top", description="Guruh reytingi va peshqadamlar jadvali"),
         BotCommand(command="help", description="Qo'llanma va yordam"),
         BotCommand(command="stats", description="Shaxsiy testlar statistikasi"),
     ]
@@ -98,20 +100,26 @@ async def main() -> None:
 
     # Routerlarni qo'shish (tartib muhim!)
     dp.include_router(common.router)
+    dp.include_router(channel_handlers.router)
     dp.include_router(export_handlers.router)
     dp.include_router(quiz_play.router)
     dp.include_router(quiz_create.router)
     dp.include_router(inline.router)
 
+    scheduler_task = None
     try:
         await set_bot_commands(bot)
         bot_info = await bot.get_me()
         logger.info("Bot muvaffaqiyatli ishga tushdi: @%s (%s)", bot_info.username, bot_info.first_name)
 
+        scheduler_task = asyncio.create_task(channel_scheduler_worker(bot))
+
         # Eski kutilmagan yangilanishlarni tashlab yuborish
         await bot.delete_webhook(drop_pending_updates=True)
         await dp.start_polling(bot)
     finally:
+        if scheduler_task:
+            scheduler_task.cancel()
         if keep_alive_task:
             keep_alive_task.cancel()
         if web_runner:

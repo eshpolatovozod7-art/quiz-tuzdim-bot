@@ -66,6 +66,18 @@ class GeminiService:
         sample_opts = ["Variant A", "Variant B", "Variant C", "Variant D"][:options_count]
         sample_opts_json = json.dumps(sample_opts, ensure_ascii=False)
 
+        is_listening = bool(topic and any(w in topic.lower() for w in ("listening", "tinglab", "eshitib", "audio test")))
+        listening_clause = ""
+        listening_sample_json = ""
+        if is_listening:
+            listening_clause = (
+                "8. 🎧 LISTENING (TINGLAB TUSHUNISH) TALABI:\n"
+                "- Har bir savolda 'audio_text' maydoni bo'lishi SHART!\n"
+                "- 'audio_text' bu diktor tomonidan o'qib beriladigan tabiiy, ravon inglizcha matn yoki qisqa dialog (20-40 ta so'z).\n"
+                "- 'question' esa tinglovchi shu audioni eshitib topishi kerak bo'lgan savol bo'lsin.\n"
+            )
+            listening_sample_json = '    "audio_text": "Spoken text or dialogue...",\n'
+
         prompt = (
             f"Siz professional testolog, pedagog va metodistsiz.\n"
             f"Quyida berilgan manba asosida aynan {count} ta sifatli, mantiqan to'g'ri va qiziqarli test (viktorina) savollarini tuzing.\n\n"
@@ -79,9 +91,11 @@ class GeminiService:
             f"4. explanation (Izoh): To'g'ri javob nima uchun to'g'riligini va asosiy qoidani qisqa tushuntirib bering (maksimal 180 belgi).\n"
             f"5. BUTUN HUJJATNI QAMRAB OLING: Savollarni faqat hujjat boshidan emas, butun matn bo'ylab (boshi, o'rtasi, oxiri, turli darslar) aralash holda tanlang.\n"
             f"6. Til qoidasi: Agar mavzu xorijiy til (ingliz tili, rus tili va h.k.) o'rganishga oid bo'lsa, test savollari va variantlari o'sha o'rganilayotgan tilda (yoki grammatika/lug'at topshirig'i shaklida), izohi (explanation) esa o'zbek tilida tushuntirilsin. Boshqa fanlar uchun savollar to'liq o'zbek tilida bo'lsin.\n"
+            f"{listening_clause}"
             f"7. Javobingiz FAQAT quyidagi JSON array formatida bo'lsin:\n"
             "[\n"
             "  {\n"
+            f"{listening_sample_json}"
             '    "question": "Savol matni?",\n'
             f'    "options": {sample_opts_json},\n'
             '    "correct_id": 0,\n'

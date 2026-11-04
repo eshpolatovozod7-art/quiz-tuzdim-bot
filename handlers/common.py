@@ -5,7 +5,7 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 from aiogram.filters import CommandStart, Command, CommandObject
 from aiogram.fsm.context import FSMContext
 
-from database.db import register_or_update_user, get_user_stats, get_user_quizzes, get_quiz
+from database.db import register_or_update_user, get_user_stats, get_user_quizzes, get_quiz, get_group_leaderboard
 from keyboards.inline_keyboards import get_main_menu_keyboard, get_quiz_card_keyboard
 from handlers.quiz_play import send_quiz_polls_to_chat
 
@@ -254,3 +254,41 @@ async def handle_new_chat_members(message: Message, bot: Bot) -> None:
             )
             await message.answer(text, parse_mode="HTML")
             break
+
+
+@router.message(Command("top", "leaderboard"))
+async def handle_group_leaderboard(message: Message, bot: Bot) -> None:
+    """Guruhdagi testlar bo'yicha eng yuqori natijali ishtirokchilar reytingi."""
+    if message.chat.type not in ["group", "supergroup"]:
+        await message.answer(
+            "ℹ️ <b>Guruh reytingi:</b>\n"
+            "Bu buyruq faqat guruhlarda ishlaydi. Botni guruhingizga qo'shib, <code>/poll</code> orqali test tashlang va <code>/top</code> orqali kim eng ko'p ball to'plaganini ko'ring!",
+            parse_mode="HTML"
+        )
+        return
+
+    leaders = await get_group_leaderboard(message.chat.id, limit=10)
+    if not leaders:
+        await message.answer(
+            "📊 <b>Guruhda hali hech kim test yechmagan.</b>\n\n"
+            "Guruhga test tashlash uchun: <code>/poll</code> buyrug'ini bering!",
+            parse_mode="HTML"
+        )
+        return
+
+    text = (
+        "✦ • ──────────────────── • ✦\n"
+        "🏆 <b>GURUH REYTINGI (TOP-10 ISHTIROKCHI)</b>\n"
+        "✦ • ──────────────────── • ✦\n\n"
+    )
+    medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+    for idx, l in enumerate(leaders):
+        medal = medals[idx] if idx < len(medals) else f"{idx + 1}."
+        u_name = html.escape(l["user_name"], quote=False)
+        score = l["score"]
+        tot = l["total_answered"]
+        pct = round((score / tot) * 100) if tot > 0 else 0
+        text += f"{medal} <b>{u_name}</b> — <b>{score} ta</b> to'g'ri ({pct}%)\n"
+
+    text += "\n🔥 <i>Viktorinalarda qatnashib, o'z o'rningizni ko'taring!</i>"
+    await message.answer(text, parse_mode="HTML")

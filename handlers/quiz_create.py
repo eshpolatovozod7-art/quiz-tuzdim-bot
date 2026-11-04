@@ -12,6 +12,7 @@ from database.db import save_quiz, get_user_used_questions
 from keyboards.inline_keyboards import (
     get_main_menu_keyboard,
     get_popular_topics_keyboard,
+    get_exam_presets_keyboard,
     get_quiz_count_keyboard,
     get_quiz_options_keyboard,
     get_quiz_difficulty_keyboard,
@@ -25,6 +26,7 @@ from services.quiz_service import (
     save_user_media,
     get_user_media,
 )
+from services.web_service import get_youtube_transcript_text, fetch_web_page_text
 from utils.states import QuizCreateState
 
 logger = logging.getLogger(__name__)
@@ -45,6 +47,31 @@ async def handle_menu_topic(callback: CallbackQuery, state: FSMContext) -> None:
     )
     if callback.message:
         await callback.message.edit_text(text, reply_markup=get_popular_topics_keyboard(), parse_mode="HTML")
+
+
+@router.callback_query(F.data == "menu:presets")
+async def handle_menu_presets(callback: CallbackQuery) -> None:
+    text = (
+        "🏛 <b>DTM, Milliy Sertifikat va IELTS maxsus shablonlari:</b>\n\n"
+        "O'zingizga kerakli imtihon yo'nalishini tanlang:\n"
+        "AI aynan shu imtihon formati, mezonlari va qiyinlik darajasiga moslashtirilgan testlarni tuzib beradi! 👇"
+    )
+    if callback.message:
+        await callback.message.edit_text(text, reply_markup=get_exam_presets_keyboard(), parse_mode="HTML")
+    await callback.answer()
+
+
+@router.callback_query(F.data == "menu:url")
+async def handle_menu_url(callback: CallbackQuery) -> None:
+    text = (
+        "🔗 <b>YouTube yoki Veb-havoladan test tuzish:</b>\n\n"
+        "Istalgan <b>YouTube video</b> yoki <b>veb-sahifa/maqola</b> havolasini chatga yuboring:\n"
+        "<i>(Masalan: https://youtu.be/... yoki https://daryo.uz/...)</i>\n\n"
+        "AI havola ichidagi ma'lumotlarni to'liq o'rganib chiqib, video yoki maqola bo'yicha test tuzadi!"
+    )
+    if callback.message:
+        await callback.message.edit_text(text, reply_markup=get_main_menu_keyboard(), parse_mode="HTML")
+    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("qtop:"))
@@ -309,6 +336,60 @@ async def process_photo_message(message: Message, bot: Bot, state: FSMContext) -
         source_type="image",
         user_id=message.from_user.id,
     )
+
+
+@router.message(F.text.regexp(r"^https?://[^\s]+"))
+async def process_url_message(message: Message, state: FSMContext) -> None:
+    """YouTube yoki veb-havoladan test tuzish."""
+    url = message.text.strip()
+    is_youtube = "youtube.com" in url or "youtu.be" in url
+
+    if is_youtube:
+        status_msg = await message.answer("⏳ <b>YouTube video tahlil qilinmoqda va subtitrlar o'qilmoqda...</b>", parse_mode="HTML")
+        transcript, title = await get_youtube_transcript_text(url)
+        try:
+            await status_msg.delete()
+        except Exception:
+            pass
+
+        if transcript and len(transcript) > 80:
+            save_user_media(message.from_user.id, text_content=transcript)
+            await start_quiz_wizard(
+                message, state,
+                text_content=transcript,
+                label=title,
+                source_type="video",
+                user_id=message.from_user.id,
+            )
+        else:
+            await message.answer(
+                "⚠️ Ushbu YouTube videoda ochiq subtitrlar topilmadi.\n\n"
+                "Iltimos, video mavzusini chatga matn sifatida yozib yuboring (masalan: <i>Python darsi</i>) yoki boshqa videoni sinab ko'ring.",
+                parse_mode="HTML",
+            )
+    else:
+        status_msg = await message.answer("⏳ <b>Veb sahifa yuklanmoqda va tahlil qilinmoqda...</b>", parse_mode="HTML")
+        page_text, title = await fetch_web_page_text(url)
+        try:
+            await status_msg.delete()
+        except Exception:
+            pass
+
+        if page_text and len(page_text) > 100:
+            save_user_media(message.from_user.id, text_content=page_text)
+            await start_quiz_wizard(
+                message, state,
+                text_content=page_text,
+                label=title,
+                source_type="doc",
+                user_id=message.from_user.id,
+            )
+        else:
+            await message.answer(
+                "⚠️ Sahifadan matn ajratib olish imkoni bo'lmadi yoki matn hajmi juda qisqa.\n"
+                "Iltimos, matnni nusxalab to'g'ridan-to'g'ri chatga yuboring.",
+                parse_mode="HTML",
+            )
 
 
 # Oddiy xabar kelsa va boshqa FSM bo'lmasa -> Mavzu deb qabul qilish

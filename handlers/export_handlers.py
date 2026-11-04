@@ -4,6 +4,7 @@ from aiogram.types import CallbackQuery, BufferedInputFile
 
 from database.db import get_quiz
 from services.export_service import generate_quiz_pdf, generate_quiz_docx, generate_quizbot_text
+from services.certificate_service import generate_certificate
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -104,3 +105,50 @@ async def handle_export_quizbot(callback: CallbackQuery, bot: Bot) -> None:
         parts = [quizbot_text[i:i+3800] for i in range(0, len(quizbot_text), 3800)]
         for p in parts:
             await callback.message.answer(p)
+
+
+@router.callback_query(F.data.startswith("qexp:cert:"))
+async def handle_export_certificate(callback: CallbackQuery, bot: Bot) -> None:
+    """O'quvchiga test natijasi bo'yicha chiroyli Sertifikat rasmini yuborish."""
+    parts = callback.data.split(":")
+    quiz_id = parts[2]
+    # Agar parametrda foiz va to'g'ri soni bo'lsa: qexp:cert:{quiz_id}:{correct}:{total}:{percentage}
+    correct = int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else 0
+    total = int(parts[4]) if len(parts) > 4 and parts[4].isdigit() else 0
+    percentage = int(parts[5]) if len(parts) > 5 and parts[5].isdigit() else 0
+
+    await callback.answer("Sertifikat tayyorlanmoqda... 🎓")
+
+    quiz = await get_quiz(quiz_id)
+    title = quiz["title"] if quiz else "Viktorina testi"
+    if total == 0 and quiz:
+        total = quiz.get("question_count", 5)
+        correct = total
+        percentage = 100
+
+    user = callback.from_user
+    user_name = f"{user.first_name or ''} {user.last_name or ''}".strip() or (user.username or "O'quvchi")
+    bot_info = await bot.get_me()
+
+    try:
+        cert_bytes = generate_certificate(
+            user_name=user_name,
+            quiz_title=title,
+            correct=correct,
+            total=total,
+            percentage=percentage,
+            bot_username=bot_info.username or "quiz_tuzdimbot",
+        )
+        safe_name = "".join(c for c in user_name if c.isalnum() or c == "_")[:15]
+        photo_file = BufferedInputFile(cert_bytes, filename=f"Certificate_{safe_name}.png")
+
+        caption = (
+            f"🎓 <b>Tabriklaymiz, {user.first_name}!</b>\n\n"
+            f"Siz «<b>{title}</b>» bo'yicha testni <b>{percentage}%</b> natija bilan yakunladingiz va maxsus sertifikatga ega bo'ldingiz! 🏆\n\n"
+            f"<i>Ushbu sertifikatni do'stlaringizga, profilingizga yoki kanalingizga faxr bilan ulashishingiz mumkin!</i>"
+        )
+        await callback.message.answer_photo(photo_file, caption=caption, parse_mode="HTML")
+    except Exception as e:
+        logger.exception("Sertifikat yaratishda xatolik: %s", e)
+        await callback.message.answer("❌ Sertifikat yaratishda xatolik yuz berdi.")
+

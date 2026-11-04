@@ -4,10 +4,11 @@ import logging
 import time
 from typing import Any
 from aiogram import Router, F, Bot
-from aiogram.types import CallbackQuery, PollAnswer, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import CallbackQuery, PollAnswer, InlineKeyboardMarkup, InlineKeyboardButton, BufferedInputFile
 
-from database.db import get_quiz, save_attempt
+from database.db import get_quiz, save_attempt, record_group_answer
 from keyboards.inline_keyboards import get_quiz_finish_keyboard
+from services.tts_service import generate_audio_bytes
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -16,6 +17,8 @@ router = Router()
 _active_sessions: dict[int, dict[str, Any]] = {}
 # poll_id -> session_key
 _poll_map: dict[str, int] = {}
+# Standalone / Guruh pollari: poll_id -> (chat_id, quiz_id, correct_id)
+_group_poll_map: dict[str, tuple[int, str, int]] = {}
 
 
 @router.callback_query(F.data.startswith("qrun:start:"))
@@ -270,7 +273,25 @@ async def send_quiz_polls_to_chat(bot: Bot, chat_id: int, quiz: dict[str, Any]) 
             poll_kwargs["open_period"] = timer_seconds
 
         try:
-            await bot.send_poll(**poll_kwargs)
+            # Agar Listening audio matni bo'lsa, avval audio/ovozli xabar yuboramiz
+            if q.get("audio_text"):
+                try:
+                    audio_bytes = await generate_audio_bytes(q["audio_text"])
+                    if audio_bytes:
+                        audio_file = BufferedInputFile(audio_bytes, filename=f"listening_{idx}.mp3")
+                        await bot.send_voice(
+                            chat_id=chat_id,
+                            voice=audio_file,
+                            caption=f"🎧 <b>[{idx}/{len(questions)}] Audioni tinglang va javobni tanlang:</b>",
+                            parse_mode="HTML",
+                        )
+                        await asyncio.sleep(0.4)
+                except Exception as a_err:
+                    logger.warning("Audio jo'natishda xatolik: %s", a_err)
+
+            msg = await bot.send_poll(**poll_kwargs)
+            if msg and msg.poll:
+                _group_poll_map[msg.poll.id] = (chat_id, quiz.get("quiz_id", ""), c_id)
             await asyncio.sleep(0.35)
         except Exception as e:
             logger.error("Poll yuborishda xatolik: %s", e)
@@ -337,6 +358,21 @@ async def send_next_question(session_key: int, bot: Bot) -> None:
         poll_kwargs["open_period"] = timer_seconds
 
     try:
+        if q.get("audio_text"):
+            try:
+                audio_bytes = await generate_audio_bytes(q["audio_text"])
+                if audio_bytes:
+                    audio_file = BufferedInputFile(audio_bytes, filename=f"listening_{idx + 1}.mp3")
+                    await bot.send_voice(
+                        chat_id=chat_id,
+                        voice=audio_file,
+                        caption=f"🎧 <b>[{idx + 1}/{total}] Audioni tinglang va savolga javob bering:</b>",
+                        parse_mode="HTML",
+                    )
+                    await asyncio.sleep(0.4)
+            except Exception as a_err:
+                logger.warning("Audio jo'natishda xatolik: %s", a_err)
+
         msg = await bot.send_poll(**poll_kwargs)
         pid = msg.poll.id
         session["current_poll_id"] = pid
@@ -359,6 +395,20 @@ async def send_next_question(session_key: int, bot: Bot) -> None:
 async def handle_poll_answer(poll_answer: PollAnswer, bot: Bot) -> None:
     """Foydalanuvchi javob berganda qabul qilish."""
     pid = poll_answer.poll_id
+
+    # 1. Guruhdagi umumiy poll bo'lsa, ballni hisoblab borish
+    if pid in _group_poll_map:
+        grp_chat_id, grp_quiz_id, correct_id = _group_poll_map[pid]
+        user = poll_answer.user
+        chosen = poll_answer.option_ids[0] if poll_answer.option_ids else -1
+        is_correct = (chosen == correct_id)
+        name = f"{user.first_name or ''} {user.last_name or ''}".strip() or (user.username or "O'quvchi")
+        try:
+            await record_group_answer(grp_chat_id, grp_quiz_id, user.id, name, is_correct)
+        except Exception as e:
+            logger.warning("Guruh ballini yozishda xatolik: %s", e)
+
+    # 2. Interaktiv individual sessiya
     session_key = _poll_map.get(pid)
     if not session_key or session_key not in _active_sessions:
         return
@@ -496,6 +546,9 @@ async def finish_quiz(session_key: int, bot: Bot) -> None:
             quiz_id,
             has_wrong=has_wrong,
             bot_username=bot_info.username or "quiz_tuzdimbot",
+            correct=correct,
+            total=total,
+            percentage=pct,
         ),
         parse_mode="HTML",
     )
