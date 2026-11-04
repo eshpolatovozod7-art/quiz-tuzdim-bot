@@ -132,11 +132,18 @@ async def handle_home(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.message.edit_text(text, reply_markup=get_main_menu_keyboard(), parse_mode="HTML")
 
 
+@router.message(Command("stats"))
+@router.message(F.text.lower().in_(["statistika", "mening statistikam", "statistika 📊", "📊 mening statistikam"]))
 @router.callback_query(F.data == "menu:stats")
-async def handle_stats(callback: CallbackQuery) -> None:
+async def handle_stats(event: Message | CallbackQuery) -> None:
     """Foydalanuvchi statistikasi."""
-    await callback.answer()
-    stats = await get_user_stats(callback.from_user.id)
+    user = event.from_user
+    if not user:
+        return
+    if isinstance(event, CallbackQuery):
+        await event.answer()
+
+    stats = await get_user_stats(user.id)
     mins, secs = divmod(stats["total_time"], 60)
     time_str = f"{mins} daqiqa {secs} soniya" if mins > 0 else f"{secs} soniya"
 
@@ -148,35 +155,103 @@ async def handle_stats(callback: CallbackQuery) -> None:
         f"⏱ Jami sarflangan vaqt: <b>{time_str}</b>\n\n"
         f"<i>O'z ustingizda ishlashda davom eting!</i> 💪"
     )
-    if callback.message:
-        await callback.message.edit_text(text, reply_markup=get_main_menu_keyboard(), parse_mode="HTML")
+    if isinstance(event, CallbackQuery) and event.message:
+        await event.message.edit_text(text, reply_markup=get_main_menu_keyboard(), parse_mode="HTML")
+    else:
+        await event.answer(text, reply_markup=get_main_menu_keyboard(), parse_mode="HTML")
 
 
+@router.message(Command("tests", "myquizzes", "history"))
+@router.message(F.text.lower().in_(["mening testlarim", "testlarim", "mening testlarim 📜", "📜 mening testlarim"]))
 @router.callback_query(F.data == "menu:history")
-async def handle_history(callback: CallbackQuery, bot: Bot) -> None:
-    """Foydalanuvchi tuzgan oxirgi testlar ro'yxati."""
-    await callback.answer()
-    quizzes = await get_user_quizzes(callback.from_user.id, limit=5)
+async def handle_history(event: Message | CallbackQuery, bot: Bot) -> None:
+    """Foydalanuvchi tuzgan oxirgi testlar ro'yxati (Tugmalar bilan)."""
+    user = event.from_user
+    if not user:
+        return
+    if isinstance(event, CallbackQuery):
+        await event.answer()
+
+    quizzes = await get_user_quizzes(user.id, limit=8)
     if not quizzes:
         text = (
             "📜 <b>Siz hali birorta ham test tuzmadingiz.</b>\n\n"
             "Bosh menyuga qaytib, o'zingiz xohlagan mavzuda birinchi testingizni tuzing!"
         )
-        if callback.message:
-            await callback.message.edit_text(text, reply_markup=get_main_menu_keyboard(), parse_mode="HTML")
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="🎲 Yangi test tuzish", callback_data="menu:topic")],
+                [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="menu:home")],
+            ]
+        )
+        if isinstance(event, CallbackQuery) and event.message:
+            await event.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+        else:
+            await event.answer(text, reply_markup=kb, parse_mode="HTML")
         return
 
-    text = "📜 <b>Sizning oxirgi tuzgan testlaringiz:</b>\n\n"
-    for idx, q in enumerate(quizzes, 1):
-        title = html.escape(q["title"], quote=False)
-        count = q["question_count"]
-        timer = f"{q.get('timer_seconds', 0)}s" if q.get("timer_seconds", 0) > 0 else "Cheklovsiz"
-        text += f"{idx}. <b>{title}</b> ({count} ta savol, ⏱ {timer})\n"
-        text += f"   👉 Qayta boshlash: /start quiz_{q['quiz_id']}\n\n"
+    text = (
+        "📜 <b>Siz tuzgan testlar ro'yxati:</b>\n\n"
+        "<i>Quyidagi tugmalardan birini tanlab, testni darhol yechishingiz, taymerini o'zgartirishingiz, guruhga tashlashingiz yoki yuklab olishingiz mumkin:</i> 👇"
+    )
 
-    text += "<i>Istalgan test linkini bosib qayta yechishingiz yoki ulashishingiz mumkin!</i>"
+    rows = []
+    for idx, q in enumerate(quizzes, 1):
+        title = q["title"][:26]
+        count = q["question_count"]
+        tm = q.get("timer_seconds", 0)
+        tm_str = "Cheksiz" if tm == 0 else f"{tm}s"
+        rows.append([
+            InlineKeyboardButton(
+                text=f"{idx}. 🎯 {title} ({count} ta, ⏱ {tm_str})",
+                callback_data=f"qopen:{q['quiz_id']}",
+            )
+        ])
+
+    rows.append([
+        InlineKeyboardButton(text="🎲 Yangi test tuzish", callback_data="menu:topic"),
+        InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="menu:home"),
+    ])
+
+    kb = InlineKeyboardMarkup(inline_keyboard=rows)
+    if isinstance(event, CallbackQuery) and event.message:
+        await event.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    else:
+        await event.answer(text, reply_markup=kb, parse_mode="HTML")
+
+
+@router.callback_query(F.data.startswith("qopen:"))
+async def handle_open_saved_quiz(callback: CallbackQuery, bot: Bot) -> None:
+    """Tarixdan tanlangan test kartochkasini to'liq ochish."""
+    quiz_id = callback.data.split(":")[1]
+    quiz = await get_quiz(quiz_id)
+    if not quiz:
+        await callback.answer("Test topilmadi", show_alert=True)
+        return
+
+    await callback.answer()
+    bot_info = await bot.get_me()
+    title = html.escape(quiz["title"], quote=False)
+    count = quiz["question_count"]
+    tm = quiz.get("timer_seconds", 0)
+    timer = f"{tm}s" if tm > 0 else "Cheklovsiz"
+    diff = {"easy": "Oson", "medium": "O'rta", "hard": "Qiyin", "olympiad": "Olimpiada"}.get(quiz.get("difficulty", "medium"), "O'rta")
+
+    card_text = (
+        f"🎯 <b>\"{title}\" testi</b>\n"
+        f"✦ • ──────────────────── • ✦\n\n"
+        f"📊 <b>Savollar soni:</b> {count} ta\n"
+        f"🔘 <b>Variantlar:</b> {quiz.get('options_count', 4)} ta\n"
+        f"⏱ <b>Taymer:</b> {timer}\n"
+        f"🎚 <b>Daraja:</b> {diff}\n\n"
+        f"<i>Quyidagi tugmalar orqali testni boshlashingiz, taymerini o'zgartirishingiz yoki yuklab olishingiz mumkin:</i>"
+    )
     if callback.message:
-        await callback.message.edit_text(text, reply_markup=get_main_menu_keyboard(), parse_mode="HTML")
+        await callback.message.edit_text(
+            text=card_text,
+            reply_markup=get_quiz_card_keyboard(quiz_id, bot_info.username or "quiz_tuzdimbot"),
+            parse_mode="HTML",
+        )
 
 
 @router.message(Command("poll", "quiz"))

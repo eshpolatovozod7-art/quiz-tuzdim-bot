@@ -396,6 +396,10 @@ async def process_url_message(message: Message, state: FSMContext) -> None:
 @router.message(F.text & ~F.text.startswith("/"))
 async def process_plain_text(message: Message, state: FSMContext) -> None:
     text = message.text.strip()
+    lower_text = text.lower().strip()
+    if lower_text in ("mening testlarim", "testlarim", "statistika", "mening statistikam", "kun testi", "duel", "yordam", "bosh menyu"):
+        return
+
     if len(text) > 120:
         # Uzun matn bo'lsa, konspekt deb hisoblaymiz
         title = text[:30].replace("\n", " ").strip() + "..."
