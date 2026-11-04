@@ -4,7 +4,7 @@ import logging
 import os
 import uuid
 from aiogram import Router, F, Bot
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 
@@ -150,6 +150,74 @@ async def process_document_message(message: Message, bot: Bot, state: FSMContext
         text_content = extract_text_from_file(file_bytes, file_name)
         save_user_media(message.from_user.id, file_bytes, file_name, doc.mime_type or "application/pdf", text_content=text_content)
         clean_title = os.path.splitext(file_name)[0][:35]
+
+        caption = (message.caption or "").lower()
+        is_batch_requested = any(k in caption for k in ["har bir", "alohida", "mavzular", "darslar", "20 ta", "bo'lib", "mavzuga", "darsga"])
+
+        if is_batch_requested:
+            await state.update_data(
+                doc_text=text_content,
+                doc_title=clean_title,
+                batch_text=text_content,
+                batch_title=clean_title,
+            )
+            kb = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(text="3 tadan", callback_data="qbatch:cnt:3"),
+                        InlineKeyboardButton(text="5 tadan", callback_data="qbatch:cnt:5"),
+                    ],
+                    [
+                        InlineKeyboardButton(text="10 tadan", callback_data="qbatch:cnt:10"),
+                        InlineKeyboardButton(text="15 tadan", callback_data="qbatch:cnt:15"),
+                    ],
+                    [
+                        InlineKeyboardButton(text="❌ Bekor qilish", callback_data="menu:home"),
+                    ],
+                ]
+            )
+            await message.answer(
+                f"📚 <b>«{html.escape(clean_title, quote=False)}» qabul qilindi!</b>\n\n"
+                f"Fayldagi <b>har bir mavzu/dars uchun</b> alohida testlar to‘plami tuziladi.\n"
+                f"Har bir mavzuda nechtadan savol bo‘lsin? Tanlang: 👇",
+                reply_markup=kb,
+                parse_mode="HTML",
+            )
+            return
+
+        has_multiple_topics = len(text_content) > 1200 or any(w in text_content.lower() for w in ["unit ", "lesson ", "mavzu", "dars ", "chapter "])
+        if has_multiple_topics:
+            await state.update_data(
+                doc_text=text_content,
+                doc_title=clean_title,
+                file_bytes=file_bytes,
+                file_name=file_name,
+                mime_type=doc.mime_type or "application/pdf",
+            )
+            mode_kb = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(text="🎯 Bitta umumiy test", callback_data="qdoc_mode:single"),
+                    ],
+                    [
+                        InlineKeyboardButton(text="📚 Har bir mavzuga alohida testlar", callback_data="qdoc_mode:batch"),
+                    ],
+                    [
+                        InlineKeyboardButton(text="🔙 Bekor qilish", callback_data="menu:home"),
+                    ],
+                ]
+            )
+            await message.answer(
+                f"📄 <b>«{html.escape(clean_title, quote=False)}» qabul qilindi!</b>\n\n"
+                f"Ushbu fayldan qanday test tuzmoqchisiz?\n\n"
+                f"• 🎯 <b>Bitta umumiy test</b> — butun hujjat bo‘yicha bitta umumiy test\n"
+                f"• 📚 <b>Har bir mavzuga alohida testlar</b> — fayldagi har bir mavzu (Unit/Lesson) uchun alohida-alohida testlar to‘plamini tuzish\n\n"
+                f"<i>Kerakli usulni tanlang:</i> 👇",
+                reply_markup=mode_kb,
+                parse_mode="HTML",
+            )
+            return
+
         await start_quiz_wizard(
             message, state,
             text_content=text_content,
@@ -178,6 +246,196 @@ async def process_document_message(message: Message, bot: Bot, state: FSMContext
             source_type="doc",
             user_id=message.from_user.id,
         )
+
+
+# ---------------- Har bir mavzuga alohida testlar (Batch Mode) ---------------- #
+
+@router.callback_query(F.data == "qdoc_mode:single")
+async def handle_doc_single_mode(callback: CallbackQuery, state: FSMContext) -> None:
+    data = await state.get_data()
+    text_content = data.get("doc_text", "")
+    clean_title = data.get("doc_title", "Hujjat")
+    await callback.answer()
+    if callback.message:
+        await start_quiz_wizard(
+            callback.message,
+            state,
+            text_content=text_content,
+            label=clean_title,
+            source_type="doc",
+            user_id=callback.from_user.id,
+        )
+
+
+@router.callback_query(F.data == "qdoc_mode:batch")
+async def handle_doc_batch_mode(callback: CallbackQuery, state: FSMContext) -> None:
+    data = await state.get_data()
+    clean_title = data.get("doc_title") or "Hujjat"
+    await callback.answer()
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="3 tadan", callback_data="qbatch:cnt:3"),
+                InlineKeyboardButton(text="5 tadan", callback_data="qbatch:cnt:5"),
+            ],
+            [
+                InlineKeyboardButton(text="10 tadan", callback_data="qbatch:cnt:10"),
+                InlineKeyboardButton(text="15 tadan", callback_data="qbatch:cnt:15"),
+            ],
+            [
+                InlineKeyboardButton(text="🔙 Bekor qilish", callback_data="menu:home"),
+            ],
+        ]
+    )
+    if callback.message:
+        await callback.message.edit_text(
+            f"📚 <b>«{html.escape(clean_title, quote=False)}» — Har bir mavzuga alohida test:</b>\n\n"
+            f"Fayldagi har bir mavzu/dars uchun nechtadan savol tuzilsin? Tanlang: 👇",
+            reply_markup=kb,
+            parse_mode="HTML",
+        )
+
+
+@router.callback_query(F.data.startswith("qbatch:cnt:"))
+async def handle_batch_count(callback: CallbackQuery, state: FSMContext) -> None:
+    cnt = int(callback.data.split(":")[2])
+    await state.update_data(batch_count=cnt)
+    await callback.answer(f"{cnt} tadan savol tanlandi")
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="⚡️ 10 soniya", callback_data="qbatch:tm:10"),
+                InlineKeyboardButton(text="⏱ 15 soniya", callback_data="qbatch:tm:15"),
+            ],
+            [
+                InlineKeyboardButton(text="⏱ 30 soniya", callback_data="qbatch:tm:30"),
+                InlineKeyboardButton(text="⏳ Cheklovsiz", callback_data="qbatch:tm:0"),
+            ],
+            [
+                InlineKeyboardButton(text="🔙 Bekor qilish", callback_data="menu:home"),
+            ],
+        ]
+    )
+    if callback.message:
+        await callback.message.edit_text(
+            f"⏱ <b>Har bir savol uchun vaqt chegarasini (taymer) tanlang:</b>",
+            reply_markup=kb,
+            parse_mode="HTML",
+        )
+
+
+@router.callback_query(F.data.startswith("qbatch:tm:"))
+async def handle_batch_timer(callback: CallbackQuery, bot: Bot, state: FSMContext) -> None:
+    tm = int(callback.data.split(":")[2])
+    data = await state.get_data()
+    cnt = data.get("batch_count", 5)
+    text_content = data.get("doc_text") or data.get("batch_text") or ""
+    clean_title = data.get("doc_title") or data.get("batch_title") or "Hujjat"
+    user_id = callback.from_user.id
+
+    if not text_content:
+        cached = get_user_media(user_id)
+        if cached:
+            text_content = cached.get("text") or ""
+
+    if not text_content:
+        await callback.answer("Hujjat matni topilmadi", show_alert=True)
+        return
+
+    await callback.answer("Mavzular bo'yicha testlar tuzilmoqda...")
+
+    status_msg = None
+    if callback.message:
+        status_msg = await callback.message.edit_text(
+            f"⏳ <b>«{html.escape(clean_title, quote=False)}» tahlil qilinmoqda...</b>\n\n"
+            f"Sun'iy intellekt barcha dars/mavzularni aniqlab, har biri uchun alohida {cnt} tadan sifatli test tuzmoqda...\n\n"
+            f"<i>Biroz kuting...</i>",
+            parse_mode="HTML",
+        )
+
+    topics_data = await gemini_service.generate_batch_topic_quizzes(
+        text_content=text_content,
+        questions_per_topic=cnt,
+        options_count=4,
+        difficulty="medium",
+    )
+
+    if not topics_data:
+        if status_msg:
+            await status_msg.edit_text(
+                "❌ Hujjatdagi mavzularni ajratishda xatolik yuz berdi. Iltimos, bitta umumiy test tuzishni tanlang yoki faylni qaytadan yuboring.",
+                reply_markup=get_back_to_menu_keyboard(),
+                parse_mode="HTML",
+            )
+        return
+
+    # Har bir mavzu bo'yicha alohida quiz yaratish va bazaga saqlash
+    created_quizzes = []
+    for t_item in topics_data:
+        t_title = t_item.get("topic_title") or "Dars"
+        t_questions = t_item.get("questions") or []
+        if not t_questions:
+            continue
+
+        q_id = uuid.uuid4().hex[:10]
+        full_title = f"{t_title}"[:40]
+        await save_quiz(
+            quiz_id=q_id,
+            user_id=user_id,
+            title=full_title,
+            source_type="doc_topic",
+            topic=full_title,
+            questions=t_questions,
+            options_count=4,
+            timer_seconds=tm,
+            difficulty="medium",
+        )
+        created_quizzes.append({
+            "quiz_id": q_id,
+            "title": full_title,
+            "count": len(t_questions),
+        })
+
+    if status_msg:
+        try:
+            await status_msg.delete()
+        except Exception:
+            pass
+
+    if not created_quizzes:
+        await bot.send_message(
+            chat_id=callback.message.chat.id,
+            text="⚠️ Mavzular bo'yicha savollar shakllantirilmadi.",
+            reply_markup=get_back_to_menu_keyboard(),
+        )
+        return
+
+    # Natijalarni klaviatura bilan chiqarish (har bir mavzuga to'g'ridan-to'g'ri ochiladigan tugma)
+    rows = []
+    for idx, q in enumerate(created_quizzes[:25], 1):
+        rows.append([
+            InlineKeyboardButton(
+                text=f"{idx}. 🎯 {q['title']} ({q['count']} ta)",
+                callback_data=f"qopen:{q['quiz_id']}",
+            )
+        ])
+
+    rows.append([
+        InlineKeyboardButton(text="📜 Barcha testlarim", callback_data="menu:history"),
+        InlineKeyboardButton(text="🏠 Asosiy menyu", callback_data="menu:home"),
+    ])
+
+    kb = InlineKeyboardMarkup(inline_keyboard=rows)
+    finish_text = (
+        f"🎉 <b>«{html.escape(clean_title, quote=False)}» faylidan {len(created_quizzes)} ta mavzu bo'yicha testlar muvaffaqiyatli tayyorlandi!</b>\n\n"
+        f"<i>Istalgan testni boshlash yoki do'stlarga ulashish uchun quyidagi ro'yxatdan tanlang:</i> 👇"
+    )
+    await bot.send_message(
+        chat_id=callback.message.chat.id,
+        text=finish_text,
+        reply_markup=kb,
+        parse_mode="HTML",
+    )
 
 
 @router.message(F.video | F.video_note)
@@ -354,6 +612,52 @@ async def process_plain_text(message: Message, state: FSMContext) -> None:
     text = message.text.strip()
     lower_text = text.lower().strip()
     if lower_text in ("mening testlarim", "testlarim", "statistika", "mening statistikam", "kun testi", "duel", "yordam", "bosh menyu"):
+        return
+
+    # Foydalanuvchi "har bir mavzuga test qilib ber" deb yozsa
+    if any(k in lower_text for k in ["har bir", "alohida", "mavzularga", "darslarga"]) and any(w in lower_text for w in ["test", "qilib", "tuz", "lug'at", "lugat"]):
+        cached = get_user_media(message.from_user.id)
+        if cached and (cached.get("text") or cached.get("bytes")):
+            clean_title = cached.get("name") or "Yuklangan hujjat"
+            text_content = cached.get("text") or ""
+            if not text_content and cached.get("bytes") and cached.get("name"):
+                text_content = extract_text_from_file(cached["bytes"], cached["name"])
+
+            if text_content:
+                await state.update_data(
+                    batch_text=text_content,
+                    batch_title=clean_title,
+                    doc_text=text_content,
+                    doc_title=clean_title,
+                )
+                kb = InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [
+                            InlineKeyboardButton(text="3 tadan", callback_data="qbatch:cnt:3"),
+                            InlineKeyboardButton(text="5 tadan", callback_data="qbatch:cnt:5"),
+                        ],
+                        [
+                            InlineKeyboardButton(text="10 tadan", callback_data="qbatch:cnt:10"),
+                            InlineKeyboardButton(text="15 tadan", callback_data="qbatch:cnt:15"),
+                        ],
+                        [
+                            InlineKeyboardButton(text="❌ Bekor qilish", callback_data="menu:home"),
+                        ],
+                    ]
+                )
+                await message.answer(
+                    f"📚 <b>Oxirgi yuklangan «{html.escape(clean_title, quote=False)}» fayli bo'yicha:</b>\n\n"
+                    f"Har bir mavzu/dars uchun nechtadan savol tuzilsin? Tanlang: 👇",
+                    reply_markup=kb,
+                    parse_mode="HTML",
+                )
+                return
+
+        await message.answer(
+            "📁 <b>Marhamat, o'sha PDF yoki Word faylni hozir chatga tashlang!</b>\n\n"
+            "Bot fayldagi barcha dars va mavzularni (masalan, 20 ta mavzuni) avtomatik aniqlab, har biriga alohida testlar to'plamini tuzib beradi.",
+            parse_mode="HTML",
+        )
         return
 
     if len(text) > 120:

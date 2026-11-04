@@ -290,3 +290,153 @@ class GeminiService:
                     pass
 
         return []
+
+    async def generate_batch_topic_quizzes(
+        self,
+        text_content: str,
+        questions_per_topic: int = 5,
+        options_count: int = 4,
+        difficulty: str = "medium",
+    ) -> list[dict[str, Any]]:
+        """
+        Hujjatdagi har bir alohida dars/mavzu/unit uchun alohida testlar to'plamini tuzish.
+        Qaytaradi: [
+            {
+                "topic_title": "Lesson 1: Greetings",
+                "questions": [ ... ]
+            }, ...
+        ]
+        """
+        if not self.client or not text_content:
+            return []
+
+        if options_count not in (2, 3, 4):
+            options_count = 4
+
+        diff_uz = {
+            "easy": "Oson (boshlang'ich)",
+            "medium": "O'rta (standart daraja)",
+            "hard": "Qiyin (chuqur bilim talab qiluvchi)",
+        }.get(difficulty, "O'rta (standart daraja)")
+
+        prompt = (
+            "Siz professional pedagog-testolog va metodistsiz.\n"
+            "Quyida berilgan hujjat (darslik, konspekt yoki lug'at)da bir nechta darslar, unitlar yoki mavzular mavjud.\n"
+            f"Vazifangiz: Hujjatdagi HAR BIR dars/mavzu/unitni aniqlab, har biri uchun alohida roppa-rosa {questions_per_topic} tadan sifatli test savollarini tuzing.\n\n"
+            f"PARAMETRLAR:\n"
+            f"- Har bir mavzudagi savollar soni: {questions_per_topic} ta\n"
+            f"- Variantlar soni: {options_count} ta\n"
+            f"- Qiyinlik darajasi: {diff_uz}\n\n"
+            "QAT'IY TALABLAR:\n"
+            "1. Hujjatdagi barcha dars/mavzularni to'liq qamrab oling (masalan, 'Lesson 1', 'Lesson 2', ..., 'Lesson 20' yoki mavzu nomlari).\n"
+            "2. 'topic_title' maydonida mavzuning aniq nomi bo'lsin (masalan: 'Lesson 1: Greetings', 'Unit 2: Family members' yoki '1-dars: Oila').\n"
+            "3. Savollar va variantlar o'sha mavzuning lug'ati va faktlariga mos bo'lsin.\n"
+            "4. Har bir savolda 'question', 'options', 'correct_id' (0 dan boshlanadi), va 'explanation' bo'lsin.\n"
+            "5. Javobingiz FAQAT quyidagi JSON ro'yxati formatida bo'lsin:\n"
+            "[\n"
+            "  {\n"
+            '    "topic_title": "Dars yoki Mavzu nomi",\n'
+            '    "questions": [\n'
+            "      {\n"
+            '        "question": "Savol matni?",\n'
+            '        "options": ["Variant 1", "Variant 2", "Variant 3", "Variant 4"],\n'
+            '        "correct_id": 0,\n'
+            '        "explanation": "Qisqa izoh"\n'
+            "      }\n"
+            "    ]\n"
+            "  }\n"
+            "]\n\n"
+            f"HUJJAT MATNI:\n\"\"\"\n{text_content[:200000]}\n\"\"\""
+        )
+
+        models_to_try = [
+            self.model,
+            "gemini-3.5-flash-lite",
+            "gemini-3.1-flash-lite",
+            "gemini-flash-lite-latest",
+            "gemini-3.8-flash",
+        ]
+        seen = set()
+        unique_models = [m for m in models_to_try if m and not (m in seen or seen.add(m))]
+
+        for model_name in unique_models:
+            try:
+                config = types.GenerateContentConfig(
+                    system_instruction="Siz tajribali pedagog-testologsiz. Hujjatdagi barcha dars/mavzularni aniqlab, har biriga alohida testlar to'plamini JSON ro'yxatida to'liq tuzib bering.",
+                    response_mime_type="application/json",
+                    temperature=0.7,
+                    max_output_tokens=16384,
+                )
+                res = await self.client.aio.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                    config=config,
+                )
+                raw_text = res.text.strip()
+                if raw_text.startswith("```json"):
+                    raw_text = raw_text[7:]
+                if raw_text.startswith("```"):
+                    raw_text = raw_text[3:]
+                if raw_text.endswith("```"):
+                    raw_text = raw_text[:-3]
+
+                parsed = json.loads(raw_text.strip())
+                if isinstance(parsed, dict):
+                    for k in ("topics", "lessons", "units", "quizzes", "items", "data"):
+                        if k in parsed and isinstance(parsed[k], list):
+                            parsed = parsed[k]
+                            break
+                    else:
+                        parsed = [parsed]
+
+                result_topics = []
+                for t_item in parsed:
+                    if not isinstance(t_item, dict):
+                        continue
+                    t_title = str(t_item.get("topic_title") or t_item.get("title") or t_item.get("topic") or "Dars").strip()
+                    raw_questions = t_item.get("questions", [])
+                    if not isinstance(raw_questions, list) or not raw_questions:
+                        continue
+
+                    valid_q = []
+                    for q in raw_questions:
+                        if not isinstance(q, dict):
+                            continue
+                        q_text = str(q.get("question", "")).strip()
+                        opts = [str(o).strip()[:98] for o in q.get("options", []) if str(o).strip()]
+                        c_id = q.get("correct_id", 0)
+                        expl = str(q.get("explanation", "")).strip()
+
+                        if not q_text or len(opts) < 2:
+                            continue
+
+                        target_opts = opts[:options_count]
+                        if not isinstance(c_id, int) or not (0 <= c_id < len(target_opts)):
+                            c_id = 0
+
+                        indexed = list(enumerate(target_opts))
+                        random.shuffle(indexed)
+                        shuffled_opts = [t for _, t in indexed]
+                        new_c_id = next(n_i for n_i, (o_i, _) in enumerate(indexed) if o_i == c_id)
+
+                        valid_q.append({
+                            "question": q_text[:295],
+                            "options": shuffled_opts,
+                            "correct_id": new_c_id,
+                            "explanation": expl[:195],
+                        })
+
+                    if valid_q:
+                        result_topics.append({
+                            "topic_title": t_title[:50],
+                            "questions": valid_q,
+                        })
+
+                if result_topics:
+                    return result_topics
+
+            except Exception as e:
+                logger.warning("Batch mavzular testini tuzishda model %s da xatolik: %s", model_name, e)
+                await asyncio.sleep(0.5)
+
+        return []
