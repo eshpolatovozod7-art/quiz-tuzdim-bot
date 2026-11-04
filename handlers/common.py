@@ -52,6 +52,29 @@ async def handle_start(message: Message, command: CommandObject, bot: Bot, state
             )
             return
 
+    # Deep link orqali 1 vs 1 duelga kirilgan bo'lsa: /start duel_abc123
+    if command.args and command.args.startswith("duel_"):
+        duel_id = command.args.replace("duel_", "").strip()
+        from database.db import get_duel
+        duel = await get_duel(duel_id)
+        if duel:
+            creator_name = html.escape(duel["creator_name"], quote=False)
+            topic = html.escape(duel["topic"], quote=False)
+            duel_text = (
+                "⚔️ <b>1 vs 1 DUEL CHORLOVI!</b>\n\n"
+                f"👤 <b>{creator_name}</b> sizni «<b>{topic}</b>» bo'yicha 5 ta savolli jangga chorladi!\n\n"
+                "⚡️ Har bir savolga 20 soniya beriladi. Kim ko'proq to'g'ri topsa va tezroq ishlasa, o'sha g'olib bo'ladi!\n\n"
+                "Jangga tayyormisiz? 👇"
+            )
+            duel_kb = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="▶️ Jangga kirishish ⚔️", callback_data=f"duel:play:{duel_id}")],
+                    [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="menu:home")],
+                ]
+            )
+            await message.answer(duel_text, reply_markup=duel_kb, parse_mode="HTML")
+            return
+
     first_name = html.escape(user.first_name if user else "Foydalanuvchi")
     text = (
         f"Assalomu alaykum, <b>{first_name}</b>! 👋\n\n"
@@ -291,4 +314,36 @@ async def handle_group_leaderboard(message: Message, bot: Bot) -> None:
         text += f"{medal} <b>{u_name}</b> — <b>{score} ta</b> to'g'ri ({pct}%)\n"
 
     text += "\n🔥 <i>Viktorinalarda qatnashib, o'z o'rningizni ko'taring!</i>"
-    await message.answer(text, parse_mode="HTML")
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📊 Natijalarni Excelda yuklab olish", callback_data=f"gexp:excel:{message.chat.id}")],
+        ]
+    )
+    await message.answer(text, reply_markup=kb, parse_mode="HTML")
+
+
+@router.message(Command("excel"))
+async def handle_excel_command(message: Message, bot: Bot) -> None:
+    """Guruhdagi natijalarni Excel qilish buyrug'i."""
+    if message.chat.type not in ["group", "supergroup"]:
+        await message.answer("ℹ️ Ushbu buyruq faqat Telegram guruhlarida ishlaydi.")
+        return
+
+    from database.db import get_group_quiz_results_for_excel
+    from services.excel_service import generate_quiz_results_excel
+    from aiogram.types import BufferedInputFile
+
+    results = await get_group_quiz_results_for_excel(message.chat.id)
+    if not results:
+        await message.answer("⚠️ Guruhda hali natijalar mavjud emas.")
+        return
+
+    chat_title = message.chat.title or "Guruh"
+    try:
+        excel_bytes = generate_quiz_results_excel("Guruh Testi", results, chat_title)
+        filename = f"Natijalar_{message.chat.id}_{int(time.time()) % 10000}.xlsx"
+        file = BufferedInputFile(excel_bytes, filename=filename)
+        caption = f"📊 <b>{html.escape(chat_title, quote=False)}</b> guruhining test natijalari hisoboti (Excel)"
+        await message.answer_document(file, caption=caption, parse_mode="HTML")
+    except Exception as e:
+        await message.answer("❌ Excel hisobot yaratishda xatolik yuz berdi.")

@@ -6,6 +6,10 @@ def get_main_menu_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
+                InlineKeyboardButton(text="🔥 Kun Testi (Streak)", callback_data="menu:daily"),
+                InlineKeyboardButton(text="⚔️ 1 vs 1 Duel (Jang)", callback_data="menu:duel"),
+            ],
+            [
                 InlineKeyboardButton(text="🎲 Mavzu bo'yicha", callback_data="menu:topic"),
                 InlineKeyboardButton(text="🏛 DTM & Imtihonlar", callback_data="menu:presets"),
             ],
@@ -219,7 +223,8 @@ def get_quiz_finish_keyboard(
     ])
     if has_wrong:
         rows.append([
-            InlineKeyboardButton(text="💡 Xatolar ustida ishlash 🎯", callback_data=f"qrun:retry_wrong:{quiz_id}")
+            InlineKeyboardButton(text="💡 Xatolar ustida ishlash 🎯", callback_data=f"qrun:retry_wrong:{quiz_id}"),
+            InlineKeyboardButton(text="🧠 AI Repetitor tahlili", callback_data=f"qexp:tutor:{quiz_id}"),
         ])
     if has_media:
         rows.append([

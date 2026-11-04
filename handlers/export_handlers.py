@@ -1,13 +1,17 @@
+import html
 import logging
 from aiogram import Router, F, Bot
 from aiogram.types import CallbackQuery, BufferedInputFile
 
-from database.db import get_quiz
+from database.db import get_quiz, get_group_quiz_results_for_excel
 from services.export_service import generate_quiz_pdf, generate_quiz_docx, generate_quizbot_text
 from services.certificate_service import generate_certificate
+from services.excel_service import generate_quiz_results_excel
+from services.tutor_service import TutorService
 
 logger = logging.getLogger(__name__)
 router = Router()
+tutor_service = TutorService()
 
 
 @router.callback_query(F.data.startswith("qexp:pdf:"))
@@ -151,4 +155,79 @@ async def handle_export_certificate(callback: CallbackQuery, bot: Bot) -> None:
     except Exception as e:
         logger.exception("Sertifikat yaratishda xatolik: %s", e)
         await callback.message.answer("❌ Sertifikat yaratishda xatolik yuz berdi.")
+
+
+@router.callback_query(F.data.startswith("qexp:tutor:"))
+async def handle_ai_tutor_analysis(callback: CallbackQuery, bot: Bot) -> None:
+    """O'quvchi xatolarini AI Repetitor orqali tahlil qilish."""
+    quiz_id = callback.data.split(":")[2]
+    await callback.answer("AI Repetitor xatolaringizni o'rganmoqda... 🧠")
+
+    status_msg = await callback.message.answer("⏳ <b>Shaxsiy AI Repetitor xatolaringizni o'rganib chiqmoqda...</b>", parse_mode="HTML")
+
+    quiz = await get_quiz(quiz_id)
+    title = quiz["title"] if quiz else "Test"
+
+    # Xato savollarni topish
+    from handlers.quiz_play import _active_sessions
+    wrong_questions = []
+    for s in _active_sessions.values():
+        if s.get("quiz_id") == quiz_id and s.get("wrong_questions"):
+            wrong_questions = s["wrong_questions"]
+            break
+
+    if not wrong_questions and quiz:
+        # Sessiya tozalanib ketgan bo'lsa, quizning savollaridan namuna
+        wrong_questions = quiz.get("questions", [])[:3]
+
+    analysis = await tutor_service.analyze_wrong_questions(title, wrong_questions)
+
+    try:
+        await status_msg.delete()
+    except Exception:
+        pass
+
+    text = (
+        f"🧠 <b>SHAXSIY AI REPETITOR TAHLILI</b>\n"
+        f"📌 <b>Mavzu:</b> <i>{html.escape(title, quote=False)}</i>\n\n"
+        f"{analysis}\n\n"
+        f"<i>Ushbu qoidalarni eslab qoling va bilimlaringizni mustahkamlang!</i> 🚀"
+    )
+    await callback.message.answer(text, parse_mode="HTML")
+
+
+@router.callback_query(F.data.startswith("gexp:excel:"))
+async def handle_export_excel(callback: CallbackQuery, bot: Bot) -> None:
+    """Guruhdagi test natijalarini Excel (.xlsx) fayl qilib yuborish."""
+    parts = callback.data.split(":")
+    group_id = int(parts[2])
+    quiz_id = parts[3] if len(parts) > 3 else None
+
+    await callback.answer("Excel jadval shakllantirilmoqda... 📊")
+
+    results = await get_group_quiz_results_for_excel(group_id, quiz_id)
+    if not results:
+        await callback.message.answer("⚠️ Guruhda hali natijalar mavjud emas.")
+        return
+
+    chat_title = callback.message.chat.title if callback.message and callback.message.chat else "Guruh"
+    quiz = await get_quiz(quiz_id) if quiz_id else None
+    quiz_title = quiz["title"] if quiz else "Guruh Viktorinasi"
+
+    try:
+        excel_bytes = generate_quiz_results_excel(quiz_title, results, chat_title)
+        filename = f"Natijalar_{group_id}_{int(time.time()) % 10000}.xlsx"
+        file = BufferedInputFile(excel_bytes, filename=filename)
+
+        caption = (
+            f"📊 <b>«{html.escape(quiz_title, quote=False)}» — Natijalar Jadvali (Excel)</b>\n\n"
+            f"• Manba: <b>{html.escape(chat_title, quote=False)}</b>\n"
+            f"• Jami qatnashchilar: <b>{len(results)} nafar</b>\n\n"
+            f"<i>Barcha o'quvchilarning ballari, foizlari va darajalari jadvalda to'liq formatlangan!</i>"
+        )
+        await callback.message.answer_document(file, caption=caption, parse_mode="HTML")
+    except Exception as e:
+        logger.exception("Excel yaratishda xatolik: %s", e)
+        await callback.message.answer("❌ Excel hisobot yaratishda xatolik yuz berdi.")
+
 

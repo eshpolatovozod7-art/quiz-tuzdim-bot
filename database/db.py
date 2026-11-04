@@ -92,6 +92,36 @@ async def init_db() -> None:
             )
         """)
 
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS user_streaks (
+                user_id INTEGER PRIMARY KEY,
+                current_streak INTEGER DEFAULT 0,
+                longest_streak INTEGER DEFAULT 0,
+                last_active_date TEXT DEFAULT '',
+                last_quiz_time REAL DEFAULT 0
+            )
+        """)
+
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS duels (
+                duel_id TEXT PRIMARY KEY,
+                creator_id INTEGER,
+                creator_name TEXT,
+                opponent_id INTEGER DEFAULT 0,
+                opponent_name TEXT DEFAULT '',
+                topic TEXT,
+                questions_json TEXT,
+                creator_score INTEGER DEFAULT 0,
+                creator_time INTEGER DEFAULT 0,
+                opponent_score INTEGER DEFAULT 0,
+                opponent_time INTEGER DEFAULT 0,
+                creator_finished INTEGER DEFAULT 0,
+                opponent_finished INTEGER DEFAULT 0,
+                status TEXT DEFAULT 'waiting',
+                created_at REAL
+            )
+        """)
+
         await db.commit()
     logger.info("Ma'lumotlar bazasi tayyor: %s", DB_PATH)
 
@@ -420,4 +450,194 @@ async def delete_channel_schedule(schedule_id: int, user_id: int) -> None:
             (schedule_id, user_id),
         )
         await db.commit()
+
+
+# ---------------- Kundalik Streak (Olov) Tizimi ---------------- #
+
+async def record_or_update_user_streak(user_id: int) -> tuple[int, int, bool]:
+    """
+    Foydalanuvchi kunlik test ishlaganda streak (ketma-ketlik)ni yangilash.
+    Qaytaradi: (current_streak, longest_streak, is_new_today)
+    """
+    import datetime
+    today = datetime.date.today().isoformat()
+    yesterday = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
+    now = time.time()
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM user_streaks WHERE user_id = ?", (user_id,)) as cursor:
+            row = await cursor.fetchone()
+
+        if not row:
+            # Yangi streak boshlanmoqda
+            await db.execute("""
+                INSERT INTO user_streaks (user_id, current_streak, longest_streak, last_active_date, last_quiz_time)
+                VALUES (?, 1, 1, ?, ?)
+            """, (user_id, today, now))
+            await db.commit()
+            return 1, 1, True
+
+        last_date = row["last_active_date"]
+        current = row["current_streak"]
+        longest = row["longest_streak"]
+
+        if last_date == today:
+            # Bugun allaqachon bajargan
+            return current, longest, False
+
+        if last_date == yesterday:
+            # Kecha ishlagan, ketma-ketlik davom etadi!
+            new_current = current + 1
+            new_longest = max(longest, new_current)
+        else:
+            # Zanjir uzilgan, qaytadan 1 dan boshlanadi
+            new_current = 1
+            new_longest = max(longest, 1)
+
+        await db.execute("""
+            UPDATE user_streaks
+            SET current_streak = ?, longest_streak = ?, last_active_date = ?, last_quiz_time = ?
+            WHERE user_id = ?
+        """, (new_current, new_longest, today, now, user_id))
+        await db.commit()
+        return new_current, new_longest, True
+
+
+async def get_user_streak(user_id: int) -> dict[str, Any]:
+    """Foydalanuvchi streak ko'rsatkichlarini olish."""
+    import datetime
+    today = datetime.date.today().isoformat()
+    yesterday = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM user_streaks WHERE user_id = ?", (user_id,)) as cursor:
+            row = await cursor.fetchone()
+            if not row:
+                return {"current": 0, "longest": 0, "active_today": False}
+
+            last_date = row["last_active_date"]
+            if last_date != today and last_date != yesterday:
+                # Agar kecha ham kirmagan bo'lsa, current streak 0
+                return {"current": 0, "longest": row["longest_streak"], "active_today": False}
+
+            return {
+                "current": row["current_streak"],
+                "longest": row["longest_streak"],
+                "active_today": (last_date == today),
+            }
+
+
+# ---------------- 1 vs 1 Do'stona Duel (Jang) ---------------- #
+
+async def create_duel(
+    duel_id: str,
+    creator_id: int,
+    creator_name: str,
+    topic: str,
+    questions: list[dict],
+) -> None:
+    """Yangi 1 vs 1 duel yaratish."""
+    now = time.time()
+    q_json = json.dumps(questions, ensure_ascii=False)
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            INSERT INTO duels (
+                duel_id, creator_id, creator_name, topic, questions_json,
+                status, created_at
+            ) VALUES (?, ?, ?, ?, ?, 'waiting', ?)
+        """, (duel_id, creator_id, creator_name, topic, q_json, now))
+        await db.commit()
+
+
+async def get_duel(duel_id: str) -> dict[str, Any] | None:
+    """Duel ma'lumotlarini olish."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM duels WHERE duel_id = ?", (duel_id,)) as cursor:
+            row = await cursor.fetchone()
+            if not row:
+                return None
+            data = dict(row)
+            data["questions"] = json.loads(data["questions_json"])
+            return data
+
+
+async def join_duel(duel_id: str, opponent_id: int, opponent_name: str) -> bool:
+    """Raqib sifatida duelga qo'shilish."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM duels WHERE duel_id = ?", (duel_id,)) as cursor:
+            row = await cursor.fetchone()
+            if not row:
+                return False
+            if row["creator_id"] == opponent_id:
+                return True  # O'zi boshlagan
+            if row["opponent_id"] != 0 and row["opponent_id"] != opponent_id:
+                return False  # Boshqa raqib allaqachon qo'shilgan
+
+        await db.execute("""
+            UPDATE duels
+            SET opponent_id = ?, opponent_name = ?, status = 'in_progress'
+            WHERE duel_id = ?
+        """, (opponent_id, opponent_name, duel_id))
+        await db.commit()
+        return True
+
+
+async def submit_duel_result(
+    duel_id: str,
+    user_id: int,
+    score: int,
+    time_spent: int,
+) -> dict[str, Any] | None:
+    """
+    O'yinchi duelni yakunlaganda natijani yozish.
+    Ikkala o'yinchi ham tugatgan bo'lsa, status = 'finished' qiladi va yakuniy natijani qaytaradi.
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM duels WHERE duel_id = ?", (duel_id,)) as cursor:
+            row = await cursor.fetchone()
+            if not row:
+                return None
+            duel = dict(row)
+
+        is_creator = (user_id == duel["creator_id"])
+        if is_creator:
+            await db.execute("""
+                UPDATE duels
+                SET creator_score = ?, creator_time = ?, creator_finished = 1
+                WHERE duel_id = ?
+            """, (score, time_spent, duel_id))
+        else:
+            await db.execute("""
+                UPDATE duels
+                SET opponent_score = ?, opponent_time = ?, opponent_finished = 1
+                WHERE duel_id = ?
+            """, (score, time_spent, duel_id))
+
+        await db.commit()
+
+        # Yangilangan holatni olish
+        async with db.execute("SELECT * FROM duels WHERE duel_id = ?", (duel_id,)) as cursor:
+            updated_row = await cursor.fetchone()
+            updated_duel = dict(updated_row)
+
+        c_fin = updated_duel["creator_finished"]
+        o_fin = updated_duel["opponent_finished"]
+
+        if c_fin and o_fin:
+            await db.execute("UPDATE duels SET status = 'finished' WHERE duel_id = ?", (duel_id,))
+            await db.commit()
+            updated_duel["status"] = "finished"
+
+        return updated_duel
+
+
+async def get_group_quiz_results_for_excel(group_id: int, quiz_id: str | None = None) -> list[dict[str, Any]]:
+    """Guruhdagi test natijalarini Excel eksporti uchun olish."""
+    return await get_group_leaderboard(group_id, quiz_id=quiz_id, limit=50)
+
 
