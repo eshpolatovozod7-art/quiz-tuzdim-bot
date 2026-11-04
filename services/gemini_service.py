@@ -78,7 +78,7 @@ class GeminiService:
             f"3. To'g'ri javob: Faqat bitta variant to'g'ri bo'lsin va 'correct_id' 0 dan {options_count - 1} gacha bo'lgan to'g'ri indeksni ko'rsatsin.\n"
             f"4. explanation (Izoh): To'g'ri javob nima uchun to'g'riligini va asosiy qoidani qisqa tushuntirib bering (maksimal 180 belgi).\n"
             f"5. BUTUN HUJJATNI QAMRAB OLING: Savollarni faqat hujjat boshidan emas, butun matn bo'ylab (boshi, o'rtasi, oxiri, turli darslar) aralash holda tanlang.\n"
-            f"6. Barcha ma'lumotlar o'zbek tilida, imlo qoidalariga qat'iy rioya qilgan holda bo'lsin.\n"
+            f"6. Til qoidasi: Agar mavzu xorijiy til (ingliz tili, rus tili va h.k.) o'rganishga oid bo'lsa, test savollari va variantlari o'sha o'rganilayotgan tilda (yoki grammatika/lug'at topshirig'i shaklida), izohi (explanation) esa o'zbek tilida tushuntirilsin. Boshqa fanlar uchun savollar to'liq o'zbek tilida bo'lsin.\n"
             f"7. Javobingiz FAQAT quyidagi JSON array formatida bo'lsin:\n"
             "[\n"
             "  {\n"
