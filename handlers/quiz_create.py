@@ -10,11 +10,14 @@ from aiogram.fsm.context import FSMContext
 
 from config import UPLOADS_DIR
 from database.db import save_quiz, get_user_used_questions
+import re
 from keyboards.inline_keyboards import (
     get_main_menu_keyboard,
     get_create_source_keyboard,
     get_back_to_menu_keyboard,
     get_popular_topics_keyboard,
+    get_subtopics_keyboard,
+    FAN_TOPICS,
     get_quiz_count_keyboard,
     get_quiz_options_keyboard,
     get_quiz_difficulty_keyboard,
@@ -56,6 +59,19 @@ async def handle_create_menu(event: Message | CallbackQuery, state: FSMContext) 
         await event.answer(text, reply_markup=kb, parse_mode="HTML")
 
 
+def clean_topic_input(text: str) -> str:
+    """Foydalanuvchi yozgan test buyrug'i yoki matnidan asosiy mavzu nomini tozalab ajratib olish."""
+    cleaned = text.strip()
+    # "Mavzu:", "Mavzusi:" kabilarni boshidan tozalash
+    cleaned = re.sub(r"^(mavzu|mavzusi|fan|mavzusi bo['‘`]?yicha)\s*[:\-–—]?\s*", "", cleaned, flags=re.IGNORECASE)
+    # "haqida test tuzib ber", "mavzusida test", "ga test", "test tuz" kabilarni oxiridan tozalash
+    cleaned = re.sub(r"\s+(haqida|bo['‘`]?yicha|ga|dan)?\s*(test|savollar|viktorina)\s*(tuzib ber|tuzish|tuz|qilib ber|kerak)?\s*$", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s+mavzusida\b", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s+haqida\b", "", cleaned, flags=re.IGNORECASE)
+    cleaned = cleaned.strip()
+    return cleaned if cleaned else text.strip()
+
+
 @router.callback_query(F.data.in_(["menu:topic", "menu:presets"]))
 async def handle_menu_topic(callback: CallbackQuery, state: FSMContext) -> None:
     """Mavzu bo'yicha test tuzish."""
@@ -63,51 +79,48 @@ async def handle_menu_topic(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
     text = (
         "✍️ <b>Mavzu bo‘yicha test tuzish:</b>\n\n"
-        "Test mavzusini yoki fan nomini chatga yozing:\n"
-        "<i>(Masalan: Oliy matematika, Python OOP, Jahon tarixi, IELTS...)</i>\n\n"
-        "Yoki quyidagi mashhur fanlardan birini tanlang: 👇"
+        "O‘zingiz istagan <b>har qanday mavzuni chatga yozib yuboring</b>:\n"
+        "<i>(Masalan: Nyuton qonunlari, Kvadrat tenglamalar, Present Continuous, Alisher Navoiy, Hujayra tuzilishi...)</i>\n\n"
+        "Yoki fanni tanlab, uning ichidagi <b>aniq mavzulardan birini tanlang</b>: 👇"
     )
     if callback.message:
         await callback.message.edit_text(text, reply_markup=get_popular_topics_keyboard(), parse_mode="HTML")
 
 
-@router.callback_query(F.data.in_(["menu:source", "menu:files", "menu:doc", "menu:image", "menu:audio", "menu:video", "menu:url", "menu:text"]))
-async def handle_menu_source(callback: CallbackQuery, state: FSMContext) -> None:
-    """Manba (fayl/hujjat/rasm/audio/video/havola) orqali test tuzish."""
-    await state.set_state(QuizCreateState.waiting_document)
-    await callback.answer()
+@router.callback_query(F.data.startswith("qfan:"))
+async def handle_fan_select(callback: CallbackQuery, state: FSMContext) -> None:
+    """Tanlangan fanning ichidagi aniq mavzular ro'yxatini ko'rsatish."""
+    fan_key = callback.data.split(":")[1]
+    fan_info = FAN_TOPICS.get(fan_key)
+    if not fan_info:
+        await callback.answer()
+        return
+
+    title = fan_info["title"]
+    kb = get_subtopics_keyboard(fan_key)
     text = (
-        "📁 <b>Manba orqali test tuzish:</b>\n\n"
-        "Chatga quyidagi manbalardan birini to‘g‘ridan-to‘g‘ri yuboring:\n\n"
-        "• 📄 <b>PDF yoki Word</b> konspekt, kitob, qo‘llanma\n"
-        "• 📸 <b>Rasm / Fotosurat</b> (kitob yoki daftar sahifasi, doska)\n"
-        "• 🎙 <b>Ovozli xabar / Audio</b> (ma'ruza yozuvi)\n"
-        "• 🎥 <b>Video</b> darslik\n"
-        "• 🔗 <b>YouTube yoki maqola</b> havolasi\n\n"
-        "👇 <b>Fayl yoki havolani hozir chatga tashlang:</b>"
-    )
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="🔙 Ortga", callback_data="menu:create")]
-        ]
+        f"📚 <b>{title} fanidan aniq mavzuni tanlang:</b>\n\n"
+        f"<i>Quyidagi mashhur mavzulardan birini tanlang yoki chatga o‘zingiz xohlagan boshqa aniq mavzuni yozing:</i> 👇"
     )
     if callback.message:
         await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("qtop:"))
 async def handle_topic_preset(callback: CallbackQuery, state: FSMContext) -> None:
     topic_name = callback.data.split(":", 1)[1]
-    await callback.answer(f"{topic_name} tanlandi")
-    await start_quiz_wizard(callback.message, state, topic=topic_name, user_id=callback.from_user.id)
+    await callback.answer(f"{topic_name[:30]} tanlandi")
+    await start_quiz_wizard(callback.message, state, topic=topic_name, source_type="topic", user_id=callback.from_user.id)
 
 
 # ---------------- Xabarlarni qabul qilish ---------------- #
 
 @router.message(QuizCreateState.waiting_topic, F.text)
 async def process_topic_text(message: Message, state: FSMContext) -> None:
-    topic = message.text.strip()
-    await start_quiz_wizard(message, state, topic=topic, user_id=message.from_user.id)
+    raw_topic = message.text.strip()
+    clean_topic = clean_topic_input(raw_topic)
+    await start_quiz_wizard(message, state, topic=clean_topic, label=clean_topic, source_type="topic", user_id=message.from_user.id)
 
 
 @router.message(QuizCreateState.waiting_text, F.text)
@@ -614,8 +627,8 @@ async def process_plain_text(message: Message, state: FSMContext) -> None:
     if lower_text in ("mening testlarim", "testlarim", "statistika", "mening statistikam", "kun testi", "duel", "yordam", "bosh menyu"):
         return
 
-    # Foydalanuvchi "har bir mavzuga test qilib ber" deb yozsa
-    if any(k in lower_text for k in ["har bir", "alohida", "mavzularga", "darslarga"]) and any(w in lower_text for w in ["test", "qilib", "tuz", "lug'at", "lugat"]):
+    # Foydalanuvchi "har bir mavzuga test qilib ber" deb yozsa va hujjat nazarda tutilgan bo'lsa
+    if ("har bir mavzu" in lower_text or "har bir dars" in lower_text or "alohida mavzu" in lower_text) and any(w in lower_text for w in ["fayl", "pdf", "word", "doc", "kitob", "hujjat"]):
         cached = get_user_media(message.from_user.id)
         if cached and (cached.get("text") or cached.get("bytes")):
             clean_title = cached.get("name") or "Yuklangan hujjat"
@@ -660,14 +673,15 @@ async def process_plain_text(message: Message, state: FSMContext) -> None:
         )
         return
 
-    if len(text) > 120:
+    if len(text) > 200:
         # Uzun matn bo'lsa, konspekt deb hisoblaymiz
-        title = text[:30].replace("\n", " ").strip() + "..."
+        title = text[:35].replace("\n", " ").strip() + "..."
         save_user_media(message.from_user.id, text_content=text)
         await start_quiz_wizard(message, state, text_content=text, label=title, source_type="text", user_id=message.from_user.id)
     else:
-        # Qisqa matn bo'lsa, mavzu deb hisoblaymiz
-        await start_quiz_wizard(message, state, topic=text, label=text, source_type="topic", user_id=message.from_user.id)
+        # Qisqa matn bo'lsa, aniq mavzu deb hisoblaymiz (masalan: "Nyuton qonunlari", "Kvadrat tenglamalar", "Present Continuous")
+        clean_topic = clean_topic_input(text)
+        await start_quiz_wizard(message, state, topic=clean_topic, label=clean_topic, source_type="topic", user_id=message.from_user.id)
 
 
 # ---------------- Wizard bosqichlari ---------------- #
@@ -813,9 +827,16 @@ async def handle_qcfg_timer(callback: CallbackQuery, bot: Bot, state: FSMContext
             parse_mode="HTML",
         )
 
-    # Agar keshda fayl bo'lsa
-    cached_media = get_user_media(user_id)
-    file_bytes = cached_media.get("bytes") if cached_media else None
+    # Agar manba "topic" bo'lsa, keshdagi eski fayl/matn aralashmasligi kerak
+    if source_type == "topic":
+        file_bytes = None
+        file_mime = None
+        file_name = None
+        text_content = None
+        topic = topic or source_label
+    else:
+        cached_media = get_user_media(user_id)
+        file_bytes = cached_media.get("bytes") if cached_media else None
 
     # Avval berilgan savollarni olish (takrorlanmaslik uchun)
     used_q = await get_user_used_questions(user_id, source_label)

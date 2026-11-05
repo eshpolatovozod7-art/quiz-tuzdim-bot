@@ -95,27 +95,153 @@ def get_exam_presets_keyboard() -> InlineKeyboardMarkup:
     )
 
 
+FAN_TOPICS: dict[str, dict[str, Any]] = {
+    "matematika": {
+        "title": "📐 Matematika",
+        "topics": [
+            ("Kvadrat tenglamalar", "Kvadrat tenglamalar"),
+            ("Kasrlar va foizlar", "Kasrlar va foizlar"),
+            ("Trigonometriya", "Trigonometriya"),
+            ("Hosilalar va integrallar", "Hosilalar va integrallar"),
+            ("Arifmetik progressiya", "Arifmetik va geometrik progressiya"),
+            ("Geometriya asoslari", "Geometriya va planimetriya"),
+            ("🎲 Barcha mavzular aralash", "Matematika (umumiy aralash)"),
+        ],
+    },
+    "fizika": {
+        "title": "⚡️ Fizika",
+        "topics": [
+            ("Nyuton qonunlari", "Nyuton qonunlari va dinamika"),
+            ("Kinematika (harakat)", "Kinematika va to'g'ri chiziqli harakat"),
+            ("Ish, quvvat va energiya", "Mexanik ish, quvvat va energiya"),
+            ("Elektr toki va zanjirlar", "Elektr toki, Om qonuni va zanjirlar"),
+            ("Optika va yorug'lik", "Optika va yorug'lik hodisalari"),
+            ("Molekulyar fizika", "Molekulyar fizika va termodinamika"),
+            ("🎲 Barcha mavzular aralash", "Fizika (umumiy aralash)"),
+        ],
+    },
+    "ingliz_tili": {
+        "title": "🇬🇧 Ingliz tili",
+        "topics": [
+            ("Present Simple & Continuous", "Present Simple and Present Continuous"),
+            ("Past Simple & Continuous", "Past Simple and Past Continuous"),
+            ("Present Perfect", "Present Perfect tense"),
+            ("Conditionals (If clauses)", "Conditionals (Zero, First, Second, Third)"),
+            ("Passive Voice", "Passive Voice in English"),
+            ("Vocabulary (Lug'at)", "English Essential Vocabulary"),
+            ("Prepositions (Predloglar)", "English Prepositions (in, on, at, by)"),
+            ("🎲 Barcha mavzular aralash", "Ingliz tili (General English)"),
+        ],
+    },
+    "tarix": {
+        "title": "🏛 O'zbekiston tarixi",
+        "topics": [
+            ("Amir Temur va Temuriylar", "Amir Temur va Temuriylar davlati"),
+            ("Qadimgi Movarounnahr", "Qadimgi Movarounnahr va ilk davlatlar"),
+            ("Jadidchilik harakati", "Jadidchilik harakati va ma'rifatparvarlar"),
+            ("Uch xonlik davri", "Buxoro amirligi, Xiva va Qo'qon xonliklari"),
+            ("Mustaqillik yillari", "O'zbekistonning mustaqillikka erishishi"),
+            ("Buyuk Ipak yo'li", "Buyuk Ipak yo'li va savdo aloqalari"),
+            ("🎲 Barcha mavzular aralash", "O'zbekiston tarixi (umumiy aralash)"),
+        ],
+    },
+    "biologiya": {
+        "title": "🧬 Biologiya",
+        "topics": [
+            ("Hujayra tuzilishi", "Hujayra tuzilishi va organoidlari"),
+            ("Genetika va irsiyat", "Genetika va Mendel qonunlari"),
+            ("Fotosintez va nafas", "Fotosintez va hujayraviy nafas olish"),
+            ("Odam anatomiyasi", "Odam anatomiyasi va fiziologiyasi"),
+            ("Botanika (O'simliklar)", "O'simliklar anatomiyasi va morfologiyasi"),
+            ("Zoologiya (Hayvonlar)", "Hayvonot olami va xordalilar"),
+            ("🎲 Barcha mavzular aralash", "Biologiya (umumiy aralash)"),
+        ],
+    },
+    "dasturlash": {
+        "title": "💻 Dasturlash (IT)",
+        "topics": [
+            ("Python asoslari", "Python asoslari va sintaksisi"),
+            ("Python OOP (Klasslar)", "Python OOP va obyektga yo'naltirilgan dasturlash"),
+            ("SQL va Ma'lumotlar bazasi", "SQL so'rovlari va ma'lumotlar bazasi"),
+            ("Algoritmlar", "Algoritmlar va ma'lumotlar tuzilmasi"),
+            ("Web: HTML, CSS, JS", "Web dasturlash: HTML, CSS va JavaScript"),
+            ("Git va GitHub", "Git versiya boshqaruvi va GitHub"),
+            ("🎲 Barcha mavzular aralash", "Dasturlash (umumiy IT)"),
+        ],
+    },
+    "kimyo": {
+        "title": "🧪 Kimyo",
+        "topics": [
+            ("Davriy jadval va qonun", "Mendeleyev davriy jadvali va qonuni"),
+            ("Kimyoviy bog'lanishlar", "Kovalent, ion va metall bog'lanishlar"),
+            ("Oksidlanish-qaytarilish", "Oksidlanish-qaytarilish reaksiyalari"),
+            ("Organik kimyo", "Organik kimyo va uglevodorodlar"),
+            ("Kislotalar, asoslar, tuzlar", "Kislotalar, asoslar va tuzlarning xossalari"),
+            ("Eritmalar va konsentratsiya", "Eritmalar va foiz konsentratsiyasi"),
+            ("🎲 Barcha mavzular aralash", "Kimyo (umumiy aralash)"),
+        ],
+    },
+    "ona_tili": {
+        "title": "🇺🇿 Ona tili va adabiyot",
+        "topics": [
+            ("Fonetika va imlo", "O'zbek tili fonetikasi va imlo qoidalari"),
+            ("Morfologiya (So'z turkumlari)", "Morfologiya va so'z turkumlari"),
+            ("Sintaksis (Gap bo'laklari)", "Sintaksis va gap bo'laklari"),
+            ("Alisher Navoiy ijodi", "Alisher Navoiy hayoti va Xamsa dostonlari"),
+            ("Zahiriddin Muhammad Bobur", "Bobur hayoti, lirikasi va Boburnoma"),
+            ("Jadid adabiyoti", "Jadid adabiyoti (Fitrat, Cho'lpon, Qodiriy)"),
+            ("🎲 Barcha mavzular aralash", "Ona tili va adabiyot (umumiy)"),
+        ],
+    },
+}
+
+
 def get_popular_topics_keyboard() -> InlineKeyboardMarkup:
-    """Mashhur fanlar klaviaturasi."""
+    """Mashhur fanlar klaviaturasi (har bir fanning ichida aniq mavzulari bilan)."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="📐 Matematika", callback_data="qtop:Matematika"),
-                InlineKeyboardButton(text="💻 Dasturlash (IT)", callback_data="qtop:Dasturlash"),
+                InlineKeyboardButton(text="📐 Matematika", callback_data="qfan:matematika"),
+                InlineKeyboardButton(text="💻 Dasturlash (IT)", callback_data="qfan:dasturlash"),
             ],
             [
-                InlineKeyboardButton(text="🇬🇧 Ingliz tili", callback_data="qtop:Ingliz tili"),
-                InlineKeyboardButton(text="🏛 O'zbekiston tarixi", callback_data="qtop:Tarix"),
+                InlineKeyboardButton(text="🇬🇧 Ingliz tili", callback_data="qfan:ingliz_tili"),
+                InlineKeyboardButton(text="🏛 O'zbekiston tarixi", callback_data="qfan:tarix"),
             ],
             [
-                InlineKeyboardButton(text="🧬 Biologiya", callback_data="qtop:Biologiya"),
-                InlineKeyboardButton(text="⚡️ Fizika", callback_data="qtop:Fizika"),
+                InlineKeyboardButton(text="🧬 Biologiya", callback_data="qfan:biologiya"),
+                InlineKeyboardButton(text="⚡️ Fizika", callback_data="qfan:fizika"),
+            ],
+            [
+                InlineKeyboardButton(text="🧪 Kimyo", callback_data="qfan:kimyo"),
+                InlineKeyboardButton(text="🇺🇿 Ona tili va adabiyot", callback_data="qfan:ona_tili"),
             ],
             [
                 InlineKeyboardButton(text="🔙 Ortga", callback_data="menu:create"),
             ],
         ]
     )
+
+
+def get_subtopics_keyboard(fan_key: str) -> InlineKeyboardMarkup:
+    """Tanlangan fanning ichidagi aniq mavzular klaviaturasi."""
+    fan_info = FAN_TOPICS.get(fan_key, {})
+    topics = fan_info.get("topics", [])
+    rows = []
+    # 2 tadan qilib qatorlarga taxlash
+    for i in range(0, len(topics) - 1, 2):
+        row = [InlineKeyboardButton(text=topics[i][0], callback_data=f"qtop:{topics[i][1]}")]
+        if i + 1 < len(topics) - 1:
+            row.append(InlineKeyboardButton(text=topics[i + 1][0], callback_data=f"qtop:{topics[i + 1][1]}"))
+        rows.append(row)
+
+    # Oxirgi umumiy aralash tugmasi
+    if topics:
+        last_label, last_val = topics[-1]
+        rows.append([InlineKeyboardButton(text=last_label, callback_data=f"qtop:{last_val}")])
+
+    rows.append([InlineKeyboardButton(text="🔙 Boshqa fanlar", callback_data="menu:topic")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def get_quiz_count_keyboard() -> InlineKeyboardMarkup:

@@ -387,6 +387,154 @@ LOCAL_QUIZ_BANK = {
             "explanation": "Jeyms Uotson va Frensis Krik 1953-yilda DNK qo'sh spiral tuzilishini kashf etgan.",
         },
     ],
+    "fizika": [
+        {
+            "question": "Nyutonning ikkinchi qonuni formulasini ko'rsating:",
+            "options": ["F = m * a", "E = m * c²", "P = U * I", "v = s / t"],
+            "correct_id": 0,
+            "explanation": "Nyutonning II qonuni: jismga ta'sir etuvchi kuch uning massasi va olgan tezlanishi ko'paytmasiga teng (F = ma).",
+        },
+        {
+            "question": "Zanjir qismi uchun Om qonuni qaysi formula bilan ifodalanadi?",
+            "options": ["I = U / R", "U = I / R", "R = U * I", "P = I² * t"],
+            "correct_id": 0,
+            "explanation": "Om qonuniga ko'ra tok kuchi kuchlanishga to'g'ri, qarshilikka teskari mutanosibdir (I = U / R).",
+        },
+        {
+            "question": "Nyutonning birinchi qonuni yana qanday nom bilan mashhur?",
+            "options": ["Inersiya qonuni", "Ta'sir va aks ta'sir qonuni", "Butun olam tortishish qonuni", "Paskal qonuni"],
+            "correct_id": 0,
+            "explanation": "Nyutonning 1-qonuni inersiya qonuni deb ataladi (tashqi kuch ta'sir etmaguncha jism o'z tinch yoki to'g'ri chiziqli tekis harakat holatini saqlaydi).",
+        },
+        {
+            "question": "Xalqaro birliklar sistemasida (SI) bosim birligi nima?",
+            "options": ["Nyuton (N)", "Paskal (Pa)", "Joul (J)", "Vatt (W)"],
+            "correct_id": 1,
+            "explanation": "SI sistemasida bosim birligi Paskal (Pa) bo'lib, 1 Pa = 1 N/m² ga teng.",
+        },
+        {
+            "question": "Kinetik energiyaning hisoblash formulasi qaysi?",
+            "options": ["E = (m * v²) / 2", "E = m * g * h", "E = F * s", "E = k * x² / 2"],
+            "correct_id": 0,
+            "explanation": "Harakatdagi jismning kinetik energiyasi E = (m * v²) / 2 formulasi orqali topiladi.",
+        },
+        {
+            "question": "Yorug'likning vakuumdagi tezligi sekundiga taxminan qancha?",
+            "options": ["150 000 km/s", "300 000 km/s", "500 000 km/s", "1 000 000 km/s"],
+            "correct_id": 1,
+            "explanation": "Yorug'lik tezligi vakuumda taxminan c = 300 000 km/s (3 * 10⁸ m/s) ga teng.",
+        },
+    ],
+    "tarix": [
+        {
+            "question": "Sohibqiron Amir Temur qaysi yilda tavallud topgan?",
+            "options": ["1336-yil 9-aprel", "1340-yil 1-may", "1370-yil 10-aprel", "1405-yil 18-fevral"],
+            "correct_id": 0,
+            "explanation": "Amir Temur 1336-yil 9-aprelda Kesh (Shahrisabz) yaqinidagi Xo'ja Ilg'or qishlog'ida tug'ilgan.",
+        },
+        {
+            "question": "Amir Temurning Movarounnahr oliy hukmdori deb e'lon qilingan mashhur Balx qurultoyi qaysi yili bo'lgan?",
+            "options": ["1365-yil", "1370-yil", "1380-yil", "1395-yil"],
+            "correct_id": 1,
+            "explanation": "1370-yil aprel oyida bo'lib o'tgan Balx qurultoyida Amir Temur Movarounnahrning yagona hukmdori deb e'lon qilingan.",
+        },
+        {
+            "question": "Turkistonda Jadidchilik harakatining asoschilaridan biri, birinchi o'zbek dramasini yozgan ma'rifatparvar kim?",
+            "options": ["Mahmudxo'ja Behbudiy", "Abdulla Avloniy", "Munavvarqori Abdurashidxonov", "Abdurauf Fitrat"],
+            "correct_id": 0,
+            "explanation": "Mahmudxo'ja Behbudiy jadidlik harakati yetakchisi hamda 'Padarkush' nomli birinchi o'zbek dramasining muallifidir.",
+        },
+        {
+            "question": "Mirzo Ulug'bek tomonidan Samarqandda qurilgan mashhur rasadxona qaysi asrga tegishli?",
+            "options": ["XII asr", "XIV asr", "XV asr (1424-1428)", "XVI asr"],
+            "correct_id": 2,
+            "explanation": "Ulug'bek rasadxonasi XV asrda (1424-1428 yillarda) Samarqandning Ko'hak tepaligida qurilgan.",
+        },
+        {
+            "question": "O'zbekiston Respublikasining davlat mustaqilligi qachon e'lon qilingan?",
+            "options": ["1991-yil 31-avgust (1-sentabr)", "1992-yil 8-dekabr", "1990-yil 20-iyun", "1991-yil 18-noyabr"],
+            "correct_id": 0,
+            "explanation": "1991-yil 31-avgustda O'zbekiston mustaqilligi e'lon qilingan va 1-sentabr Mustaqillik kuni deb belgilangan.",
+        },
+    ],
+    "biologiya": [
+        {
+            "question": "O'simliklar hujayrasida fotosintez jarayoni qaysi organoidda amalga oshadi?",
+            "options": ["Xloroplastlarda", "Mitoxondriyada", "Ribosomada", "Yadroda"],
+            "correct_id": 0,
+            "explanation": "Fotosintez jarayoni o'simlik hujayrasining xlorofill pigmentiga ega bo'lgan xloroplastlarida kechadi.",
+        },
+        {
+            "question": "Hujayraning 'energiya stansiyasi' deb ataluvchi organoid qaysi?",
+            "options": ["Mitoxondriya", "Golji majmuasi", "Lizosoma", "Ribosoma"],
+            "correct_id": 0,
+            "explanation": "Mitoxondriyalarda ATF (adenozintrifosfat) sintezlanadi va ular hujayrani energiya bilan ta'minlaydi.",
+        },
+        {
+            "question": "Genetika fanining asoschisi kim hisoblanadi?",
+            "options": ["Gregor Mendel", "Charlz Darvin", "Lui Paster", "Ivan Pavlov"],
+            "correct_id": 0,
+            "explanation": "Noxat ustida tajribalar o'tkazib irsiyat qonuniyatlarini kashf etgan Gregor Mendel genetika asoschisidir.",
+        },
+        {
+            "question": "Inson yuragi necha kameradan iborat?",
+            "options": ["2 ta", "3 ta", "4 ta (2 bo'lmacha, 2 qorincha)", "5 ta"],
+            "correct_id": 2,
+            "explanation": "Sutemizuvchilar va inson yuragi to'rt kameradan (o'ng va chap bo'lmacha, o'ng va chap qorincha) iborat.",
+        },
+    ],
+    "kimyo": [
+        {
+            "question": "Oddiy toza suvning kimyoviy formulasi qaysi?",
+            "options": ["H₂O", "H₂O₂", "CO₂", "NaCl"],
+            "correct_id": 0,
+            "explanation": "Suv molekulasi ikkita vodorod va bitta kislorod atomidan iborat bo'lib, H₂O deb yoziladi.",
+        },
+        {
+            "question": "Kimyoviy elementlarning davriy qonunini kim kashf etgan?",
+            "options": ["D.I. Mendeleyev", "Antuan Lavuazye", "Jon Dalton", "Ernest Rezerford"],
+            "correct_id": 0,
+            "explanation": "1869-yilda rus olimi D.I. Mendeleyev kimyoviy elementlarning davriy qonuni va jadvalini kashf etgan.",
+        },
+        {
+            "question": "Neytral muhitning pH ko'rsatkichi nechiga teng?",
+            "options": ["0", "7", "14", "10"],
+            "correct_id": 1,
+            "explanation": "pH = 7 neytral muhit (masalan, toza distillangan suv), pH < 7 kislotali, pH > 7 ishqoriy muhit hisoblanadi.",
+        },
+        {
+            "question": "Mendeleyev davriy jadvalidagi birinchi va eng yengil kimyoviy element qaysi?",
+            "options": ["Vodorod (H)", "Geliy (He)", "Litiy (Li)", "Kislorod (O)"],
+            "correct_id": 0,
+            "explanation": "Vodorod (H) atom massasi 1 ga teng bo'lgan eng yengil va davriy jadvaldagi 1-elementdir.",
+        },
+    ],
+    "ona_tili": [
+        {
+            "question": "O'zbek adabiy tilida nechta unli tovush mavjud?",
+            "options": ["6 ta (a, o, i, u, e, o')", "8 ta", "10 ta", "12 ta"],
+            "correct_id": 0,
+            "explanation": "Hozirgi o'zbek adabiy tilida 6 ta unli tovush (fonema) mavjud: a, o, i, u, e, o'.",
+        },
+        {
+            "question": "Alisher Navoiyning turkiy tilda yozilgan mashhur beshlik dostoni qanday ataladi?",
+            "options": ["Xamsa", "Xazoyinul-maoniy", "Muhokamatul-lug'atayn", "Lisonut-tayr"],
+            "correct_id": 0,
+            "explanation": "Alisher Navoiy 1483-1485 yillarda besh dostondan iborat 'Xamsa' asarini yaratgan.",
+        },
+        {
+            "question": "O'zbek adabiyotidagi ilk realistik roman qaysi va uning muallifi kim?",
+            "options": ["'O'tkan kunlar' - Abdulla Qodiriy", "'Navoiy' - Oybek", "'Mehrobdan chayon' - Cho'lpon", "'Kecha va kunduz' - Fitrat"],
+            "correct_id": 0,
+            "explanation": "Abdulla Qodiriyning 1922-1925 yillarda yozilgan 'O'tkan kunlar' asari ilk o'zbek romanidir.",
+        },
+        {
+            "question": "Shaxs, narsa va hodisalarning belgisini (rangi, shakli, xususiyatini) bildiruvchi so'z turkumi qaysi?",
+            "options": ["Sifat", "Ot", "Son", "Olmosh"],
+            "correct_id": 0,
+            "explanation": "Sifat so'z turkumi narsa-buyumlarning belgisini bildiradi va 'qanday?', 'qanaqa?' so'roqlariga javob bo'ladi.",
+        },
+    ],
 }
 
 
@@ -434,12 +582,22 @@ def get_offline_quiz_questions(
     """Mavzuga mos oflayn zaxira savollarni olish va variantlarni aralashtirish."""
     lower = (topic or "").lower()
     cat = "umumiy"
-    if any(k in lower for k in ["matem", "algebra", "hisob", "geometr", "integral"]):
+    if any(k in lower for k in ["matem", "algebra", "hisob", "geometr", "integral", "kvadrat tenglama", "kasr", "progressiya"]):
         cat = "matematika"
-    elif any(k in lower for k in ["dastur", "python", "sql", "kod", "algoritm", "it", "web"]):
+    elif any(k in lower for k in ["dastur", "python", "sql", "kod", "algoritm", "it", "web", "html", "css", "git"]):
         cat = "dasturlash"
-    elif any(k in lower for k in ["ingliz", "english", "ielts", "grammar"]):
+    elif any(k in lower for k in ["ingliz", "english", "ielts", "grammar", "present", "past", "passive", "vocabulary", "tense"]):
         cat = "ingliz_tili"
+    elif any(k in lower for k in ["fizik", "nyuton", "kinematik", "dinamik", "tok", "om qonuni", "optika", "quvvat", "energiya"]):
+        cat = "fizika"
+    elif any(k in lower for k in ["tarix", "temur", "jadid", "movarounnahr", "xonlik", "ipak yo'li", "mustaqillik"]):
+        cat = "tarix"
+    elif any(k in lower for k in ["biolog", "hujayra", "genetik", "mendel", "fotosintez", "anatomiya", "botanika", "zoologiya"]):
+        cat = "biologiya"
+    elif any(k in lower for k in ["kimyo", "mendeleyev", "reaksiya", "oksidlanish", "organik", "kislota", "eritma"]):
+        cat = "kimyo"
+    elif any(k in lower for k in ["ona tili", "adabiyot", "navoiy", "bobur", "fonetika", "morfologiya", "sintaksis", "imlo"]):
+        cat = "ona_tili"
     else:
         cat = random.choice(list(LOCAL_QUIZ_BANK.keys()))
 

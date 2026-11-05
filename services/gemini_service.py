@@ -146,7 +146,13 @@ class GeminiService:
             elif text_content:
                 prompt += f"MANBA MATNI:\n\"\"\"\n{text_content[:200000]}\n\"\"\""
             else:
-                prompt += f"MANBA MAVZUSI: '{topic or 'Umumiy bilimlar'}'"
+                prompt += (
+                    f"MANBA MAVZUSI (ANIQ MAVZU): «{topic or 'Umumiy bilimlar'}»\n\n"
+                    f"QAT'IY TALAB:\n"
+                    f"- Barcha {count} ta test savollari FAQAT va FAQAT ko'rsatilgan «{topic}» mavzusiga oid bo'lishi SHART!\n"
+                    f"- Savollar aynan shu mavzuning asosiy qoidalari, formulalari, ta'riflari, faktlari va mantiqiy jihatlarini to'liq qamrab olsin.\n"
+                    f"- Mavzudan mutlaqo chetga chiqmang, umumiy yoki boshqa begona mavzulardan savol qo'shmang."
+                )
 
             contents.append(prompt)
 
