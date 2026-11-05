@@ -248,7 +248,7 @@ def get_quiz_card_keyboard(
                 [
                     InlineKeyboardButton(
                         text="▶️ Testni boshlash",
-                        callback_data=f"qrun:start:{quiz_id}",
+                        callback_data=f"qrun:ready:{quiz_id}",
                     ),
                 ],
                 [
@@ -277,7 +277,7 @@ def get_quiz_card_keyboard(
         [
             InlineKeyboardButton(
                 text="▶️ Testni boshlash",
-                callback_data=f"qrun:start:{quiz_id}",
+                callback_data=f"qrun:ready:{quiz_id}",
             ),
         ],
         [

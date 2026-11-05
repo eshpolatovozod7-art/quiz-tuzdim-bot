@@ -34,12 +34,21 @@ async def handle_start(message: Message, command: CommandObject, bot: Bot, state
                 await send_quiz_polls_to_chat(bot, message.chat.id, quiz)
                 return
 
-            bot_info = await bot.get_me()
-            bot_username = bot_info.username or "quiz_tuzdimbot"
-            text = format_quiz_ready_text(quiz, bot_username=bot_username, is_group=False)
+            # Shaxsiy chatda shared test ochilganda (@QuizBot kabi faqat "Men tayyorman!" chiqadi)
+            text = format_quiz_ready_text(quiz, is_group=True)
+            kb = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="Men tayyorman!",
+                            callback_data=f"qrun:start:{quiz_id}",
+                        )
+                    ]
+                ]
+            )
             await message.answer(
                 text=text,
-                reply_markup=get_quiz_card_keyboard(quiz_id, bot_username=bot_username, is_group=False),
+                reply_markup=kb,
                 parse_mode="HTML",
             )
             return
