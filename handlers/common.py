@@ -34,10 +34,12 @@ async def handle_start(message: Message, command: CommandObject, bot: Bot, state
                 await send_quiz_polls_to_chat(bot, message.chat.id, quiz)
                 return
 
-            text = format_quiz_ready_text(quiz)
+            bot_info = await bot.get_me()
+            bot_username = bot_info.username or "quiz_tuzdimbot"
+            text = format_quiz_ready_text(quiz, bot_username=bot_username, is_group=False)
             await message.answer(
                 text=text,
-                reply_markup=get_quiz_card_keyboard(quiz_id),
+                reply_markup=get_quiz_card_keyboard(quiz_id, bot_username=bot_username, is_group=False),
                 parse_mode="HTML",
             )
             return
@@ -211,11 +213,13 @@ async def handle_open_saved_quiz(callback: CallbackQuery, bot: Bot) -> None:
         return
 
     await callback.answer()
-    card_text = format_quiz_ready_text(quiz)
+    bot_info = await bot.get_me()
+    bot_username = bot_info.username or "quiz_tuzdimbot"
+    card_text = format_quiz_ready_text(quiz, bot_username=bot_username, is_group=False)
     if callback.message:
         await callback.message.edit_text(
             text=card_text,
-            reply_markup=get_quiz_card_keyboard(quiz_id),
+            reply_markup=get_quiz_card_keyboard(quiz_id, bot_username=bot_username, is_group=False),
             parse_mode="HTML",
         )
 

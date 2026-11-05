@@ -31,21 +31,37 @@ _group_poll_map: dict[str, tuple] = {}
 _group_active_quizzes: dict[int, dict[str, Any]] = {}
 
 
-def format_quiz_ready_text(quiz: dict[str, Any]) -> str:
-    """Telegram @QuizBot formatidagi test tayyorgarlik xabari (Image 1 dagi kabi)."""
+def format_quiz_ready_text(
+    quiz: dict[str, Any],
+    bot_username: str = "quiz_tuzdimbot",
+    is_group: bool = False,
+) -> str:
+    """Telegram @QuizBot formatidagi test tayyorgarlik va kartochka xabari."""
     title = html.escape(quiz.get("title", "Test"), quote=False)
     questions = quiz.get("questions", [])
     count = quiz.get("question_count", len(questions))
     tm = quiz.get("timer_seconds", 15)
     tm_str = f"{tm} soniya" if (tm and tm > 0) else "15 soniya"
+    quiz_id = quiz.get("quiz_id", "")
 
+    if is_group:
+        return (
+            f"🎲 <b>“{title}” testiga tayyorlaning</b>\n\n"
+            f"🗡 {count} ta savol\n"
+            f"⏱ Har bir savol uchun {tm_str}\n"
+            f"🏛 Ovozlar test egasiga ko‘rinadigan bo‘ladi\n\n"
+            f"🏁 Tayyor bo‘lganingizda quyidagi tugmani bosing.\n"
+            f"Uni to‘xtatish uchun /stop buyrug‘ini yuboring."
+        )
+
+    link_part = f"\n\n🔗 <b>Ulashish uchun havola:</b>\n<code>https://t.me/{bot_username}?start=quiz_{quiz_id}</code>" if quiz_id else ""
     return (
-        f"🎲 <b>“{title}” testiga tayyorlaning</b>\n\n"
+        f"🎲 <b>“{title}”</b>\n\n"
         f"🗡 {count} ta savol\n"
         f"⏱ Har bir savol uchun {tm_str}\n"
-        f"📰 Ovozlar test egasiga ko‘rinadigan bo‘ladi\n\n"
-        f"🏁 Tayyor bo‘lganingizda quyidagi tugmani bosing.\n"
-        f"Uni to‘xtatish uchun /stop buyrug‘ini yuboring."
+        f"🏛 Ovozlar test egasiga ko‘rinadigan bo‘ladi"
+        f"{link_part}\n\n"
+        f"<i>Guruhda boshlash yoki do‘stlarga ulashish uchun quyidagi tugmalardan foydalaning:</i> 👇"
     )
 
 
@@ -249,17 +265,20 @@ async def handle_next_batch_quiz(callback: CallbackQuery, bot: Bot) -> None:
         difficulty=difficulty,
     )
 
+    bot_info = await bot.get_me()
+    bot_username = bot_info.username or "quiz_tuzdimbot"
     new_quiz_obj = {
+        "quiz_id": new_quiz_id,
         "title": f"{source_title} (Yangi to'plam)",
         "questions": questions,
         "question_count": len(questions),
         "timer_seconds": timer_seconds,
     }
-    card_text = format_quiz_ready_text(new_quiz_obj)
+    card_text = format_quiz_ready_text(new_quiz_obj, bot_username=bot_username, is_group=False)
     await bot.send_message(
         chat_id=chat_id,
         text=card_text,
-        reply_markup=get_quiz_card_keyboard(new_quiz_id),
+        reply_markup=get_quiz_card_keyboard(new_quiz_id, bot_username=bot_username, is_group=False),
         parse_mode="HTML",
     )
 
@@ -403,8 +422,10 @@ async def handle_dump_all_polls(callback: CallbackQuery, bot: Bot) -> None:
 async def send_group_quiz_lobby(bot: Bot, chat_id: int, quiz: dict[str, Any]) -> None:
     """Guruhga @QuizBot kabi yagona 'Men tayyorman!' kartasini yuborish."""
     quiz_id = quiz["quiz_id"]
-    text = format_quiz_ready_text(quiz)
-    kb = get_quiz_card_keyboard(quiz_id, is_group=True)
+    bot_info = await bot.get_me()
+    bot_username = bot_info.username or "quiz_tuzdimbot"
+    text = format_quiz_ready_text(quiz, bot_username=bot_username, is_group=True)
+    kb = get_quiz_card_keyboard(quiz_id, bot_username=bot_username, is_group=True)
     await bot.send_message(chat_id=chat_id, text=text, reply_markup=kb, parse_mode="HTML")
 
 
@@ -924,7 +945,14 @@ async def finish_quiz(session_key: int, bot: Bot) -> None:
     await bot.send_message(
         chat_id=chat_id,
         text=result_text,
-        reply_markup=get_quiz_finish_keyboard(quiz_id, bot_info.username or "quiz_tuzdimbot"),
+        reply_markup=get_quiz_finish_keyboard(
+            quiz_id,
+            bot_username=bot_info.username or "quiz_tuzdimbot",
+            has_wrong=has_wrong,
+            correct=correct,
+            total=total,
+            percentage=pct,
+        ),
         parse_mode="HTML",
     )
 
@@ -1010,11 +1038,13 @@ async def handle_save_new_timer(callback: CallbackQuery, bot: Bot) -> None:
     if not quiz:
         return
 
-    card_text = format_quiz_ready_text(quiz)
+    bot_info = await bot.get_me()
+    bot_username = bot_info.username or "quiz_tuzdimbot"
+    card_text = format_quiz_ready_text(quiz, bot_username=bot_username, is_group=False)
     if callback.message:
         await callback.message.edit_text(
             card_text,
-            reply_markup=get_quiz_card_keyboard(quiz_id),
+            reply_markup=get_quiz_card_keyboard(quiz_id, bot_username=bot_username, is_group=False),
             parse_mode="HTML",
         )
 
@@ -1027,11 +1057,13 @@ async def handle_cancel_timer_change(callback: CallbackQuery, bot: Bot) -> None:
     if not quiz:
         return
 
-    card_text = format_quiz_ready_text(quiz)
+    bot_info = await bot.get_me()
+    bot_username = bot_info.username or "quiz_tuzdimbot"
+    card_text = format_quiz_ready_text(quiz, bot_username=bot_username, is_group=False)
     if callback.message:
         await callback.message.edit_text(
             card_text,
-            reply_markup=get_quiz_card_keyboard(quiz_id),
+            reply_markup=get_quiz_card_keyboard(quiz_id, bot_username=bot_username, is_group=False),
             parse_mode="HTML",
         )
     await callback.answer()

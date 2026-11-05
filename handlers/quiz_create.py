@@ -878,18 +878,21 @@ async def handle_qcfg_timer(callback: CallbackQuery, bot: Bot, state: FSMContext
         except Exception:
             pass
 
+    bot_info = await bot.get_me()
+    bot_username = bot_info.username or "quiz_tuzdimbot"
     from handlers.quiz_play import format_quiz_ready_text
     quiz_obj = {
+        "quiz_id": quiz_id,
         "title": clean_title,
         "questions": questions,
         "question_count": len(questions),
         "timer_seconds": tm,
     }
-    card_text = format_quiz_ready_text(quiz_obj)
+    card_text = format_quiz_ready_text(quiz_obj, bot_username=bot_username, is_group=False)
 
     await bot.send_message(
         chat_id=callback.message.chat.id,
         text=card_text,
-        reply_markup=get_quiz_card_keyboard(quiz_id),
+        reply_markup=get_quiz_card_keyboard(quiz_id, bot_username=bot_username, is_group=False),
         parse_mode="HTML",
     )
