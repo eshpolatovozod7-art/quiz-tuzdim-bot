@@ -6,6 +6,7 @@ import uuid
 from typing import Any
 from urllib.parse import quote
 from aiogram import Router, F, Bot
+from aiogram.dispatcher.event.bases import SkipHandler
 from aiogram.types import Message, CallbackQuery, PollAnswer, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -230,12 +231,12 @@ async def send_next_duel_question(session_key: tuple[int, str], bot: Bot) -> Non
         await send_next_duel_question(session_key, bot)
 
 
-@router.poll_answer()
+@router.poll_answer(lambda pa: pa.poll_id in _duel_poll_map)
 async def handle_duel_poll_answer(poll_answer: PollAnswer, bot: Bot) -> None:
     pid = poll_answer.poll_id
     session_key = _duel_poll_map.get(pid)
     if not session_key or session_key not in _active_duel_sessions:
-        return
+        raise SkipHandler()
 
     session = _active_duel_sessions[session_key]
     if session.get("current_poll_id") != pid:

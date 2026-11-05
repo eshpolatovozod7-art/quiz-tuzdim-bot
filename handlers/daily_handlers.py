@@ -3,6 +3,7 @@ import datetime
 import html
 import logging
 from aiogram import Router, F, Bot
+from aiogram.dispatcher.event.bases import SkipHandler
 from aiogram.types import Message, CallbackQuery, PollAnswer, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
 
@@ -117,12 +118,12 @@ async def handle_daily_quiz(event: Message | CallbackQuery, bot: Bot) -> None:
     _daily_poll_map[poll_msg.poll.id] = (user.id, c_id)
 
 
-@router.poll_answer()
+@router.poll_answer(lambda pa: pa.poll_id in _daily_poll_map)
 async def handle_daily_poll_answer(poll_answer: PollAnswer, bot: Bot) -> None:
     """Kun testiga javob berilganda streakni yangilash."""
     pid = poll_answer.poll_id
     if pid not in _daily_poll_map:
-        return
+        raise SkipHandler()
 
     target_user_id, correct_id = _daily_poll_map.pop(pid)
     user = poll_answer.user

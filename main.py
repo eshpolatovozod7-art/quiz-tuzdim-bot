@@ -115,12 +115,12 @@ async def main() -> None:
 
     # Routerlarni qo'shish (tartib muhim!)
     dp.include_router(common.router)
+    dp.include_router(quiz_play.router)
+    dp.include_router(quiz_create.router)
     dp.include_router(daily_handlers.router)
     dp.include_router(duel_handlers.router)
     dp.include_router(channel_handlers.router)
     dp.include_router(export_handlers.router)
-    dp.include_router(quiz_play.router)
-    dp.include_router(quiz_create.router)
     dp.include_router(inline.router)
 
     scheduler_task = None

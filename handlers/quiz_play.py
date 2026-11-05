@@ -4,6 +4,7 @@ import logging
 import time
 from typing import Any
 from aiogram import Router, F, Bot
+from aiogram.dispatcher.event.bases import SkipHandler
 from aiogram.filters import Command
 from aiogram.types import (
     CallbackQuery,
@@ -848,12 +849,17 @@ async def send_next_question(session_key: int, bot: Bot) -> None:
             except Exception as a_err:
                 logger.warning("Audio jo'natishda xatolik: %s", a_err)
 
+        old_pid = session.get("current_poll_id")
+        if old_pid and old_pid in _poll_map:
+            _poll_map.pop(old_pid, None)
+
         msg = await bot.send_poll(**poll_kwargs)
         pid = msg.poll.id
         session["current_poll_id"] = pid
         _poll_map[pid] = session_key
+        logger.info("Savol [%d/%d] muvaffaqiyatli yuborildi: poll_id=%s (chat_id=%s)", idx + 1, total, pid, chat_id)
     except Exception as e:
-        logger.error("Savol yuborishda xatolik: %s", e)
+        logger.exception("Savol yuborishda xatolik: %s", e)
         session["current_idx"] += 1
         if session["current_idx"] < total:
             await send_next_question(session_key, bot)
@@ -861,17 +867,21 @@ async def send_next_question(session_key: int, bot: Bot) -> None:
             await finish_quiz(session_key, bot)
 
 
-@router.poll_answer()
+@router.poll_answer(lambda pa: pa.poll_id in _poll_map or pa.poll_id in _group_poll_map)
 async def handle_poll_answer(poll_answer: PollAnswer, bot: Bot) -> None:
     """Foydalanuvchi javob berganda qabul qilish."""
     try:
         pid = poll_answer.poll_id
+        if pid not in _poll_map and pid not in _group_poll_map:
+            raise SkipHandler()
+
         user = poll_answer.user
         user_id = user.id if user else 0
         name = "Ishtirokchi"
         if user:
             name = f"{user.first_name or ''} {user.last_name or ''}".strip() or (user.username or "Ishtirokchi")
         chosen = poll_answer.option_ids[0] if poll_answer.option_ids else -1
+        logger.info("handle_poll_answer qabul qilindi: pid=%s, user_id=%s (%s), chosen=%s", pid, user_id, name, chosen)
 
         # 1. Guruhdagi umumiy poll bo'lsa, ballni hisoblab borish
         if pid in _group_poll_map:
