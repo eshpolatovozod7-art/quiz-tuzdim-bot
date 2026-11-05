@@ -89,6 +89,9 @@ async def handle_stop_command(message: Message, bot: Bot) -> None:
         if active:
             active["cancelled"] = True
             active["is_running"] = False
+            ev = active.get("advance_event")
+            if ev and not ev.is_set():
+                ev.set()
             task = active.get("task")
             if task and not task.done():
                 task.cancel()
@@ -471,8 +474,14 @@ async def handle_group_quiz_start(callback: CallbackQuery, bot: Bot) -> None:
 
     active = _group_active_quizzes.get(chat_id)
     if active and active.get("is_running"):
-        await callback.answer("⚠️ Ushbu guruhda allaqachon viktorina ketmoqda!", show_alert=True)
-        return
+        task = active.get("task")
+        if task and not task.done():
+            # Test allaqachon ketayotgan bo'lsa, bosgan foydalanuvchini ishtirokchilar safiga qo'shamiz
+            active.setdefault("participants", set()).add(user.id)
+            await callback.answer("Siz ham viktorinaga qo'shildingiz! 🎮")
+            return
+        else:
+            _group_active_quizzes.pop(chat_id, None)
 
     quiz = await get_quiz(quiz_id)
     if not quiz or not quiz.get("questions"):
@@ -511,6 +520,9 @@ async def handle_group_quiz_start(callback: CallbackQuery, bot: Bot) -> None:
         "current_poll_id": None,
         "current_msg_id": None,
         "initiator_id": user.id,
+        "participants": {user.id},
+        "answered_users": set(),
+        "advance_event": asyncio.Event(),
         "scores": {},
     }
     _group_active_quizzes[chat_id] = session
@@ -542,6 +554,9 @@ async def handle_group_quiz_cancel(callback: CallbackQuery, bot: Bot) -> None:
 
         active["cancelled"] = True
         active["is_running"] = False
+        ev = active.get("advance_event")
+        if ev and not ev.is_set():
+            ev.set()
         task = active.get("task")
         if task and not task.done():
             task.cancel()
@@ -564,9 +579,24 @@ async def handle_group_quiz_cancel(callback: CallbackQuery, bot: Bot) -> None:
         await callback.answer("Bekor qilindi.")
 
 
+async def _trigger_group_advance(session: dict[str, Any], delay: float = 0.8) -> None:
+    """Ishtirokchilar javob bergach, Telegram animatsiyasi ko'rinishi uchun ozgina kutib keyingi savolga o'tkazish."""
+    try:
+        await asyncio.sleep(delay)
+        event = session.get("advance_event")
+        if event and not event.is_set():
+            event.set()
+    except Exception:
+        pass
+
+
 async def run_group_quiz_loop(chat_id: int, quiz: dict[str, Any], bot: Bot, session: dict[str, Any]) -> None:
     """Guruhda savollarni sinxron ketma-ket yuboruvchi worker."""
     questions = quiz.get("questions", [])
+    if not questions:
+        await bot.send_message(chat_id=chat_id, text="⚠️ Test savollari topilmadi.")
+        return
+
     quiz_id = quiz.get("quiz_id", "")
     timer_seconds = quiz.get("timer_seconds", 30)
     if not (5 <= timer_seconds <= 600):
@@ -578,6 +608,9 @@ async def run_group_quiz_loop(chat_id: int, quiz: dict[str, Any], bot: Bot, sess
         for idx, q in enumerate(questions, 1):
             if session.get("cancelled") or not session.get("is_running"):
                 break
+
+            session["answered_users"] = set()
+            session["advance_event"] = asyncio.Event()
 
             # Listening audio bo'lsa
             if q.get("audio_text"):
@@ -596,8 +629,15 @@ async def run_group_quiz_loop(chat_id: int, quiz: dict[str, Any], bot: Bot, sess
                     logger.warning("Guruh audiosida xatolik: %s", a_err)
 
             q_text = f"[{idx}/{total}] {q['question']}"
-            opts = [str(o)[:100] for o in q.get("options", [])][:10]
+            raw_opts = q.get("options", [])
+            opts = [str(o).strip()[:100] for o in raw_opts if str(o).strip()][:10]
+            if len(opts) < 2:
+                opts = [str(o)[:100] for o in raw_opts][:10]
+            if len(opts) < 2:
+                opts = ["Variant A", "Variant B"]
             c_id = q.get("correct_id", 0)
+            if not (0 <= c_id < len(opts)):
+                c_id = 0
             expl = str(q.get("explanation", "")).strip()[:200]
 
             poll_kwargs = {
@@ -612,24 +652,28 @@ async def run_group_quiz_loop(chat_id: int, quiz: dict[str, Any], bot: Bot, sess
             if expl:
                 poll_kwargs["explanation"] = expl
 
-            try:
-                msg = await bot.send_poll(**poll_kwargs)
-            except Exception as pe:
-                logger.error("Guruhda poll jo'natishda xatolik: %s", pe)
-                await bot.send_message(
-                    chat_id=chat_id,
-                    text="❌ Guruhda so'rovnoma (Poll) yuborishda xatolik yuz berdi. Botda tegishli admin/poll ruxsatlari borligini tekshiring."
-                )
-                break
+            msg = None
+            for attempt in range(2):
+                try:
+                    msg = await bot.send_poll(**poll_kwargs)
+                    break
+                except Exception as pe:
+                    logger.warning("Guruhda poll jo'natishda xatolik (%d-urinish): %s", attempt + 1, pe)
+                    await asyncio.sleep(1.0)
+
+            if not msg or not msg.poll:
+                logger.error("Guruhda savol jo'natib bo'lmadi [%d/%d], keyingisiga o'tilmoqda", idx, total)
+                continue
 
             session["current_poll_id"] = msg.poll.id
             session["current_msg_id"] = msg.message_id
             _group_poll_map[msg.poll.id] = (chat_id, quiz_id, c_id, time.time())
 
-            for _ in range(timer_seconds):
-                if session.get("cancelled") or not session.get("is_running"):
-                    break
-                await asyncio.sleep(1.0)
+            # Barcha ishtirokchilar javob berishini yoki taymer tugashini kutish
+            try:
+                await asyncio.wait_for(session["advance_event"].wait(), timeout=timer_seconds)
+            except asyncio.TimeoutError:
+                pass
 
             if session.get("cancelled") or not session.get("is_running"):
                 break
@@ -640,7 +684,7 @@ async def run_group_quiz_loop(chat_id: int, quiz: dict[str, Any], bot: Bot, sess
                 pass
 
             if idx < total:
-                await asyncio.sleep(2.0)
+                await asyncio.sleep(0.8)
 
         if not session.get("cancelled") and session.get("is_running"):
             await finish_group_quiz(chat_id, quiz, bot, session)
@@ -834,6 +878,18 @@ async def handle_poll_answer(poll_answer: PollAnswer, bot: Bot) -> None:
             player["total_time"] += time_spent
             if is_correct:
                 player["score"] += 1
+
+            participants = sess.setdefault("participants", set())
+            participants.add(user.id)
+
+            answered_users = sess.setdefault("answered_users", set())
+            answered_users.add(user.id)
+
+            # Agar barcha ma'lum ishtirokchilar javob bergan bo'lsa:
+            if participants and participants.issubset(answered_users):
+                # Birinchi savolda va faqat 1 kishi bo'lsa boshqalarga imkon berish uchun 1.5s, keyinroq yoki to'liq bo'lsa 0.8s
+                delay = 1.5 if (len(scores) <= 1 and player["answered_count"] == 1) else 0.8
+                asyncio.create_task(_trigger_group_advance(sess, delay=delay))
 
         try:
             await record_group_answer(grp_chat_id, grp_quiz_id, user.id, name, is_correct)
