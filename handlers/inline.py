@@ -28,23 +28,31 @@ async def handle_inline_query(inline_query: InlineQuery, bot: Bot) -> None:
         quiz_id = raw_query.replace("quiz_", "").replace("q_", "").strip()
         quiz = await get_quiz(quiz_id)
         if quiz:
-            from handlers.quiz_play import format_quiz_ready_text
             title = quiz["title"]
             count = quiz["question_count"]
-            timer = f"{quiz.get('timer_seconds', 0)}s" if quiz.get("timer_seconds", 0) > 0 else "15s"
-            text = format_quiz_ready_text(quiz, bot_username=bot_username, is_group=False)
+            tm = quiz.get("timer_seconds", 15)
+            timer = f"{tm} soniya" if (tm and tm > 0) else "15 soniya"
+            escaped_title = html.escape(title, quote=False)
+
+            text = (
+                f"🎲 <b>“{escaped_title}” testi</b>\n\n"
+                f"🗡 {count} ta savol\n"
+                f"⏱ Har bir savol uchun {timer}\n"
+                f"🏛 Ovozlar test egasiga ko‘rinadigan bo‘ladi\n\n"
+                f"👇 <i>Testni boshlash uchun quyidagi tugmani bosing:</i>"
+            )
 
             kb = InlineKeyboardMarkup(
                 inline_keyboard=[
                     [
                         InlineKeyboardButton(
-                            text="▶️ Bu testni boshlash",
+                            text="▶️ Testni boshlash",
                             url=f"https://t.me/{bot_username}?start=quiz_{quiz_id}",
                         ),
                     ],
                     [
                         InlineKeyboardButton(
-                            text="👥 Guruhda boshlash",
+                            text="👥 Guruhda testni boshlash",
                             url=f"https://t.me/{bot_username}?startgroup=poll_{quiz_id}",
                         ),
                     ],
@@ -54,7 +62,7 @@ async def handle_inline_query(inline_query: InlineQuery, bot: Bot) -> None:
             result = InlineQueryResultArticle(
                 id=_make_id(f"quiz_{quiz_id}"),
                 title=f"🎲 “{title}” ({count} ta savol)",
-                description=f"⏱ {timer} | Guruhda yoki shaxsiyda boshlash",
+                description=f"⏱ {timer} | Testni boshlash yoki guruhga qo'shish",
                 input_message_content=InputTextMessageContent(
                     message_text=text,
                     parse_mode="HTML",
@@ -72,24 +80,31 @@ async def handle_inline_query(inline_query: InlineQuery, bot: Bot) -> None:
         q_id = q["quiz_id"]
         q_title = q["title"]
         q_count = q["question_count"]
-        q_timer = f"{q.get('timer_seconds', 0)}s" if q.get("timer_seconds", 0) > 0 else "15s"
+        q_tm = q.get("timer_seconds", 15)
+        q_timer = f"{q_tm} soniya" if (q_tm and q_tm > 0) else "15 soniya"
 
         if raw_query and raw_query.lower() not in q_title.lower():
             continue
 
-        from handlers.quiz_play import format_quiz_ready_text
-        q_text = format_quiz_ready_text(q, bot_username=bot_username, is_group=False)
+        escaped_title = html.escape(q_title, quote=False)
+        q_text = (
+            f"🎲 <b>“{escaped_title}” testi</b>\n\n"
+            f"🗡 {q_count} ta savol\n"
+            f"⏱ Har bir savol uchun {q_timer}\n"
+            f"🏛 Ovozlar test egasiga ko‘rinadigan bo‘ladi\n\n"
+            f"👇 <i>Testni boshlash uchun quyidagi tugmani bosing:</i>"
+        )
         q_kb = InlineKeyboardMarkup(
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
-                        text="▶️ Bu testni boshlash",
+                        text="▶️ Testni boshlash",
                         url=f"https://t.me/{bot_username}?start=quiz_{q_id}",
                     ),
                 ],
                 [
                     InlineKeyboardButton(
-                        text="👥 Guruhda boshlash",
+                        text="👥 Guruhda testni boshlash",
                         url=f"https://t.me/{bot_username}?startgroup=poll_{q_id}",
                     ),
                 ],

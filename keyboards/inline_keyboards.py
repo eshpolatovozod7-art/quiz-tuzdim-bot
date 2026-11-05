@@ -233,7 +233,7 @@ def get_quiz_card_keyboard(
 ) -> InlineKeyboardMarkup:
     """Quiz kartochkasi klaviaturasi.
     - Guruhda bo'lsa (is_group=True): QuizBot kabi yagona 'Men tayyorman!' tugmasi.
-    - Shaxsiy chatda bo'lsa (is_group=False): Guruhda boshlash, Testni boshlash, Ulashish va qo'shimcha menyu.
+    - Shaxsiy chatda bo'lsa (is_group=False): Testni boshlash, Guruhda boshlash, Do'stlarga ulashish va menyu.
     """
     if is_group:
         return InlineKeyboardMarkup(
@@ -242,31 +242,25 @@ def get_quiz_card_keyboard(
             ]
         )
 
-    share_url = f"https://t.me/share/url?url=https://t.me/{bot_username}?start=quiz_{quiz_id}&text=Ushbu%20testni%20yechib%20bilimingizni%20sinab%20ko%27ring!%20%F0%9F%8E%AF"
-
     if not full_menu:
         return InlineKeyboardMarkup(
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
-                        text="👥 Guruhda viktorinani boshlash",
-                        url=f"https://t.me/{bot_username}?startgroup=poll_{quiz_id}",
-                    ),
-                ],
-                [
-                    InlineKeyboardButton(
-                        text="▶️ Ushbu testni boshlash",
+                        text="▶️ Testni boshlash",
                         callback_data=f"qrun:start:{quiz_id}",
                     ),
                 ],
                 [
                     InlineKeyboardButton(
-                        text="📤 Testni ulashish",
-                        switch_inline_query=f"quiz_{quiz_id}",
+                        text="👥 Guruhda testni boshlash",
+                        url=f"https://t.me/{bot_username}?startgroup=poll_{quiz_id}",
                     ),
+                ],
+                [
                     InlineKeyboardButton(
-                        text="📲 Do'stlarga yuborish",
-                        url=share_url,
+                        text="📤 Do'stlarga ulashish",
+                        switch_inline_query=f"quiz_{quiz_id}",
                     ),
                 ],
                 [
@@ -282,24 +276,20 @@ def get_quiz_card_keyboard(
     rows = [
         [
             InlineKeyboardButton(
-                text="👥 Guruhda viktorinani boshlash",
-                url=f"https://t.me/{bot_username}?startgroup=poll_{quiz_id}",
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                text="▶️ Ushbu testni boshlash",
+                text="▶️ Testni boshlash",
                 callback_data=f"qrun:start:{quiz_id}",
             ),
         ],
         [
             InlineKeyboardButton(
-                text="📤 Testni ulashish",
-                switch_inline_query=f"quiz_{quiz_id}",
+                text="👥 Guruhda testni boshlash",
+                url=f"https://t.me/{bot_username}?startgroup=poll_{quiz_id}",
             ),
+        ],
+        [
             InlineKeyboardButton(
-                text="📲 Do'stlarga yuborish",
-                url=share_url,
+                text="📤 Do'stlarga ulashish",
+                switch_inline_query=f"quiz_{quiz_id}",
             ),
         ],
         [
@@ -350,7 +340,6 @@ def get_quiz_finish_keyboard(
     **kwargs: Any,
 ) -> InlineKeyboardMarkup:
     """Test yakunlanganda natijalar klaviaturasi (ulashish, qayta ishlash, sertifikat)."""
-    share_url = f"https://t.me/share/url?url=https://t.me/{bot_username}?start=quiz_{quiz_id}&text=Men%20ushbu%20testdan%20{correct}/{total}%20ball%20oldim!%20Siz%20ham%20urinib%20ko%27ring!%20%F0%9F%8F%86"
     rows = []
     if percentage >= 70 or (total > 0 and correct >= total * 0.7):
         rows.append([
@@ -365,15 +354,11 @@ def get_quiz_finish_keyboard(
             switch_inline_query=f"quiz_{quiz_id}",
         ),
         InlineKeyboardButton(
-            text="📲 Natijani ulashish",
-            url=share_url,
-        ),
-    ])
-    rows.append([
-        InlineKeyboardButton(
             text="👥 Guruhda o'ynash",
             url=f"https://t.me/{bot_username}?startgroup=poll_{quiz_id}",
         ),
+    ])
+    rows.append([
         InlineKeyboardButton(
             text="🔄 Qaytadan boshlash",
             callback_data=f"qrun:start:{quiz_id}",

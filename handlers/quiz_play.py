@@ -54,14 +54,12 @@ def format_quiz_ready_text(
             f"Uni to‘xtatish uchun /stop buyrug‘ini yuboring."
         )
 
-    link_part = f"\n\n🔗 <b>Ulashish uchun havola:</b>\n<code>https://t.me/{bot_username}?start=quiz_{quiz_id}</code>" if quiz_id else ""
     return (
         f"🎲 <b>“{title}”</b>\n\n"
         f"🗡 {count} ta savol\n"
         f"⏱ Har bir savol uchun {tm_str}\n"
-        f"🏛 Ovozlar test egasiga ko‘rinadigan bo‘ladi"
-        f"{link_part}\n\n"
-        f"<i>Guruhda boshlash yoki do‘stlarga ulashish uchun quyidagi tugmalardan foydalaning:</i> 👇"
+        f"🏛 Ovozlar test egasiga ko‘rinadigan bo‘ladi\n\n"
+        f"<i>Testni boshlash, guruhga qo‘shish yoki do‘stlarga ulashish uchun quyidagi tugmalardan foydalaning:</i> 👇"
     )
 
 
