@@ -7,7 +7,7 @@ from aiogram.fsm.context import FSMContext
 
 from database.db import register_or_update_user, get_user_stats, get_user_quizzes, get_quiz, get_group_leaderboard
 from keyboards.inline_keyboards import get_main_menu_keyboard, get_quiz_card_keyboard, get_back_to_menu_keyboard
-from handlers.quiz_play import send_quiz_polls_to_chat, send_group_quiz_lobby, format_quiz_ready_text
+from handlers.quiz_play import send_quiz_polls_to_chat, send_group_quiz_lobby, format_quiz_ready_text, format_quiz_single_ready_text
 
 router = Router()
 
@@ -35,7 +35,7 @@ async def handle_start(message: Message, command: CommandObject, bot: Bot, state
                 return
 
             # Shaxsiy chatda shared test ochilganda (@QuizBot kabi faqat "Men tayyorman!" chiqadi)
-            text = format_quiz_ready_text(quiz, is_group=True)
+            text = format_quiz_single_ready_text(quiz)
             kb = InlineKeyboardMarkup(
                 inline_keyboard=[
                     [

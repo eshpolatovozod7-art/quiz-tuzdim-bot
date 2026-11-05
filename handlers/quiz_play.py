@@ -57,9 +57,24 @@ def format_quiz_ready_text(
     return (
         f"🎲 <b>“{title}”</b>\n\n"
         f"🗡 {count} ta savol\n"
-        f"⏱ Har bir savol uchun {tm_str}\n"
+        f"⏱ Guruhda: {tm_str} · Shaxsiyda: Cheklovsiz\n"
         f"🏛 Ovozlar test egasiga ko‘rinadigan bo‘ladi\n\n"
         f"<i>Testni boshlash, guruhga qo‘shish yoki do‘stlarga ulashish uchun quyidagi tugmalardan foydalaning:</i> 👇"
+    )
+
+
+def format_quiz_single_ready_text(quiz: dict[str, Any]) -> str:
+    """Yakka tartibda ishlayotganda (vaqt cheklovisiz) tayyorgarlik xabari."""
+    title = html.escape(quiz.get("title", "Test"), quote=False)
+    questions = quiz.get("questions", [])
+    count = quiz.get("question_count", len(questions))
+    return (
+        f"🎲 <b>“{title}” testiga tayyorlaning</b>\n\n"
+        f"🗡 {count} ta savol\n"
+        f"⏱ O‘z sur’atingizda (savol belgilanishi bilan keyingisiga o‘tadi)\n"
+        f"🏛 Ovozlar test egasiga ko‘rinadigan bo‘ladi\n\n"
+        f"🏁 Tayyor bo‘lganingizda quyidagi tugmani bosing.\n"
+        f"Uni to‘xtatish uchun /stop buyrug‘ini yuboring."
     )
 
 
@@ -108,7 +123,7 @@ async def handle_quiz_run_ready(callback: CallbackQuery, bot: Bot) -> None:
         await callback.answer("⚠️ Kechirasiz, ushbu test topilmadi.", show_alert=True)
         return
 
-    text = format_quiz_ready_text(quiz, is_group=True)
+    text = format_quiz_single_ready_text(quiz)
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="Men tayyorman!", callback_data=f"qrun:start:{quiz_id}")]
@@ -754,8 +769,6 @@ async def send_next_question(session_key: int, bot: Bot) -> None:
     }
     if expl:
         poll_kwargs["explanation"] = expl
-    if timer_seconds and 5 <= timer_seconds <= 600:
-        poll_kwargs["open_period"] = timer_seconds
 
     try:
         if q.get("audio_text"):
@@ -777,11 +790,6 @@ async def send_next_question(session_key: int, bot: Bot) -> None:
         pid = msg.poll.id
         session["current_poll_id"] = pid
         _poll_map[pid] = session_key
-
-        if timer_seconds and 5 <= timer_seconds <= 600:
-            session["timeout_task"] = asyncio.create_task(
-                _timeout_watcher(session_key, pid, idx, timer_seconds, bot)
-            )
     except Exception as e:
         logger.error("Savol yuborishda xatolik: %s", e)
         session["current_idx"] += 1
@@ -861,8 +869,8 @@ async def handle_poll_answer(poll_answer: PollAnswer, bot: Bot) -> None:
 
         session["current_idx"] += 1
 
-    # Animatsiya va tushuntirishni ko'rish uchun 1.1s pauza
-    await asyncio.sleep(1.1)
+    # Animatsiya ko'rinishi uchun juda tezkor pauza (0.3 soniya)
+    await asyncio.sleep(0.3)
 
     if session["current_idx"] < session["total"]:
         await send_next_question(session_key, bot)
