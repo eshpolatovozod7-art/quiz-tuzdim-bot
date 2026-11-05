@@ -31,6 +31,34 @@ _group_poll_map: dict[str, tuple] = {}
 _group_active_quizzes: dict[int, dict[str, Any]] = {}
 
 
+def prepare_poll_options(raw_options: list[Any], correct_id: int) -> tuple[list[str], int]:
+    """Variantlarni tozalash, takrorlarini chetlatish va to'g'ri indeksni saqlash."""
+    seen = set()
+    cleaned_opts = []
+    new_c_id = 0
+
+    for idx, opt in enumerate(raw_options):
+        opt_str = str(opt).strip()[:100]
+        if not opt_str:
+            opt_str = f"Variant {len(cleaned_opts) + 1}"
+        if opt_str in seen:
+            opt_str = f"{opt_str} ({len(cleaned_opts) + 1})"
+        seen.add(opt_str)
+        if idx == correct_id:
+            new_c_id = len(cleaned_opts)
+        cleaned_opts.append(opt_str)
+
+    while len(cleaned_opts) < 2:
+        extra = f"Variant {len(cleaned_opts) + 1}"
+        cleaned_opts.append(extra)
+
+    cleaned_opts = cleaned_opts[:10]
+    if not (0 <= new_c_id < len(cleaned_opts)):
+        new_c_id = 0
+
+    return cleaned_opts, new_c_id
+
+
 def format_quiz_ready_text(
     quiz: dict[str, Any],
     bot_username: str = "quiz_tuzdimbot",
@@ -392,9 +420,8 @@ async def send_quiz_polls_to_chat(bot: Bot, chat_id: int, quiz: dict[str, Any]) 
     await bot.send_message(chat_id=chat_id, text=header_text, parse_mode="HTML")
 
     for idx, q in enumerate(questions, 1):
-        q_text = f"[{idx}/{len(questions)}] {q['question']}"
-        opts = [str(o)[:100] for o in q.get("options", [])][:10]
-        c_id = q.get("correct_id", 0)
+        q_text = f"[{idx}/{len(questions)}] {q['question']}"[:300]
+        opts, c_id = prepare_poll_options(q.get("options", []), q.get("correct_id", 0))
         expl = str(q.get("explanation", "")).strip()[:200]
 
         poll_kwargs = {
@@ -628,16 +655,8 @@ async def run_group_quiz_loop(chat_id: int, quiz: dict[str, Any], bot: Bot, sess
                 except Exception as a_err:
                     logger.warning("Guruh audiosida xatolik: %s", a_err)
 
-            q_text = f"[{idx}/{total}] {q['question']}"
-            raw_opts = q.get("options", [])
-            opts = [str(o).strip()[:100] for o in raw_opts if str(o).strip()][:10]
-            if len(opts) < 2:
-                opts = [str(o)[:100] for o in raw_opts][:10]
-            if len(opts) < 2:
-                opts = ["Variant A", "Variant B"]
-            c_id = q.get("correct_id", 0)
-            if not (0 <= c_id < len(opts)):
-                c_id = 0
+            q_text = f"[{idx}/{total}] {q['question']}"[:300]
+            opts, c_id = prepare_poll_options(q.get("options", []), q.get("correct_id", 0))
             expl = str(q.get("explanation", "")).strip()[:200]
 
             poll_kwargs = {
@@ -798,9 +817,8 @@ async def send_next_question(session_key: int, bot: Bot) -> None:
         return
 
     q = questions[idx]
-    q_title = f"[{idx + 1}/{total}] {q['question']}"
-    opts = [str(o)[:100] for o in q.get("options", [])][:10]
-    c_id = q.get("correct_id", 0)
+    q_title = f"[{idx + 1}/{total}] {q['question']}"[:300]
+    opts, c_id = prepare_poll_options(q.get("options", []), q.get("correct_id", 0))
     expl = str(q.get("explanation", "")).strip()[:200]
 
     poll_kwargs = {
@@ -846,92 +864,100 @@ async def send_next_question(session_key: int, bot: Bot) -> None:
 @router.poll_answer()
 async def handle_poll_answer(poll_answer: PollAnswer, bot: Bot) -> None:
     """Foydalanuvchi javob berganda qabul qilish."""
-    pid = poll_answer.poll_id
-
-    # 1. Guruhdagi umumiy poll bo'lsa, ballni hisoblab borish
-    if pid in _group_poll_map:
-        grp_data = _group_poll_map[pid]
-        grp_chat_id = grp_data[0]
-        grp_quiz_id = grp_data[1]
-        correct_id = grp_data[2]
-        q_start = grp_data[3] if len(grp_data) > 3 else time.time()
-
+    try:
+        pid = poll_answer.poll_id
         user = poll_answer.user
+        user_id = user.id if user else 0
+        name = "Ishtirokchi"
+        if user:
+            name = f"{user.first_name or ''} {user.last_name or ''}".strip() or (user.username or "Ishtirokchi")
         chosen = poll_answer.option_ids[0] if poll_answer.option_ids else -1
-        is_correct = (chosen == correct_id)
-        name = f"{user.first_name or ''} {user.last_name or ''}".strip() or (user.username or "Ishtirokchi")
-        time_spent = max(0.1, time.time() - q_start)
 
-        # Jonli guruh sessiyasida ball va vaqtni hisoblash
-        if grp_chat_id in _group_active_quizzes:
-            sess = _group_active_quizzes[grp_chat_id]
-            scores = sess.setdefault("scores", {})
-            if user.id not in scores:
-                scores[user.id] = {
-                    "name": name,
-                    "score": 0,
-                    "total_time": 0.0,
-                    "answered_count": 0,
-                }
-            player = scores[user.id]
-            player["answered_count"] += 1
-            player["total_time"] += time_spent
-            if is_correct:
-                player["score"] += 1
+        # 1. Guruhdagi umumiy poll bo'lsa, ballni hisoblab borish
+        if pid in _group_poll_map:
+            grp_data = _group_poll_map[pid]
+            grp_chat_id = grp_data[0]
+            grp_quiz_id = grp_data[1]
+            correct_id = grp_data[2]
+            q_start = grp_data[3] if len(grp_data) > 3 else time.time()
 
-            participants = sess.setdefault("participants", set())
-            participants.add(user.id)
+            is_correct = (chosen == correct_id)
+            time_spent = max(0.1, time.time() - q_start)
 
-            answered_users = sess.setdefault("answered_users", set())
-            answered_users.add(user.id)
+            # Jonli guruh sessiyasida ball va vaqtni hisoblash
+            if grp_chat_id in _group_active_quizzes:
+                sess = _group_active_quizzes[grp_chat_id]
+                scores = sess.setdefault("scores", {})
+                if user_id not in scores:
+                    scores[user_id] = {
+                        "name": name,
+                        "score": 0,
+                        "total_time": 0.0,
+                        "answered_count": 0,
+                    }
+                player = scores[user_id]
+                player["answered_count"] += 1
+                player["total_time"] += time_spent
+                if is_correct:
+                    player["score"] += 1
 
-            # Agar barcha ma'lum ishtirokchilar javob bergan bo'lsa:
-            if participants and participants.issubset(answered_users):
-                # Birinchi savolda va faqat 1 kishi bo'lsa boshqalarga imkon berish uchun 1.5s, keyinroq yoki to'liq bo'lsa 0.8s
-                delay = 1.5 if (len(scores) <= 1 and player["answered_count"] == 1) else 0.8
-                asyncio.create_task(_trigger_group_advance(sess, delay=delay))
+                participants = sess.setdefault("participants", set())
+                if user_id:
+                    participants.add(user_id)
 
-        try:
-            await record_group_answer(grp_chat_id, grp_quiz_id, user.id, name, is_correct)
-        except Exception as e:
-            logger.warning("Guruh ballini yozishda xatolik: %s", e)
+                answered_users = sess.setdefault("answered_users", set())
+                if user_id:
+                    answered_users.add(user_id)
 
-    # 2. Interaktiv individual sessiya
-    session_key = _poll_map.get(pid)
-    if not session_key or session_key not in _active_sessions:
-        return
+                # Agar barcha ma'lum ishtirokchilar javob bergan bo'lsa:
+                if participants and participants.issubset(answered_users):
+                    # Birinchi savolda va faqat 1 kishi bo'lsa boshqalarga imkon berish uchun 1.5s, keyinroq yoki to'liq bo'lsa 0.8s
+                    delay = 1.5 if (len(scores) <= 1 and player["answered_count"] == 1) else 0.8
+                    asyncio.create_task(_trigger_group_advance(sess, delay=delay))
 
-    session = _active_sessions[session_key]
-    if session.get("current_poll_id") != pid:
-        return
+            try:
+                if user_id:
+                    await record_group_answer(grp_chat_id, grp_quiz_id, user_id, name, is_correct)
+            except Exception as e:
+                logger.warning("Guruh ballini yozishda xatolik: %s", e)
 
-    async with session["lock"]:
-        idx = session["current_idx"]
-        if idx >= session["total"]:
+        # 2. Interaktiv individual sessiya
+        session_key = _poll_map.get(pid)
+        if not session_key or session_key not in _active_sessions:
             return
 
-        task = session.get("timeout_task")
-        if task and not task.done():
-            task.cancel()
+        session = _active_sessions[session_key]
+        if session.get("current_poll_id") != pid:
+            return
 
-        q = session["questions"][idx]
-        chosen = poll_answer.option_ids[0] if poll_answer.option_ids else -1
-        correct_id = q.get("correct_id", 0)
+        async with session["lock"]:
+            idx = session["current_idx"]
+            if idx >= session["total"]:
+                return
 
-        if chosen == correct_id:
-            session["correct_count"] += 1
+            task = session.get("timeout_task")
+            if task and not task.done():
+                task.cancel()
+
+            q = session["questions"][idx]
+            correct_id = q.get("correct_id", 0)
+
+            if chosen == correct_id:
+                session["correct_count"] += 1
+            else:
+                session["wrong_questions"].append(q)
+
+            session["current_idx"] += 1
+
+        # Animatsiya ko'rinishi uchun juda tezkor pauza (0.3 soniya)
+        await asyncio.sleep(0.3)
+
+        if session["current_idx"] < session["total"]:
+            await send_next_question(session_key, bot)
         else:
-            session["wrong_questions"].append(q)
-
-        session["current_idx"] += 1
-
-    # Animatsiya ko'rinishi uchun juda tezkor pauza (0.3 soniya)
-    await asyncio.sleep(0.3)
-
-    if session["current_idx"] < session["total"]:
-        await send_next_question(session_key, bot)
-    else:
-        await finish_quiz(session_key, bot)
+            await finish_quiz(session_key, bot)
+    except Exception as ex:
+        logger.exception("handle_poll_answer da xatolik: %s", ex)
 
 
 async def _timeout_watcher(

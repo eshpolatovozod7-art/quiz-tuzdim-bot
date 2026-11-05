@@ -131,9 +131,9 @@ async def main() -> None:
 
         scheduler_task = asyncio.create_task(channel_scheduler_worker(bot))
 
-        # Eski kutilmagan yangilanishlarni tashlab yuborish
-        await bot.delete_webhook(drop_pending_updates=True)
-        await dp.start_polling(bot)
+        # Webhookni tozalash va to'xtab turgan yangilanishlarni qabul qilish
+        await bot.delete_webhook(drop_pending_updates=False)
+        await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     finally:
         if scheduler_task:
             scheduler_task.cancel()

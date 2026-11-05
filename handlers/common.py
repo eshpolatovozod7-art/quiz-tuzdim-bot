@@ -52,6 +52,19 @@ async def handle_start(message: Message, command: CommandObject, bot: Bot, state
                 parse_mode="HTML",
             )
             return
+        else:
+            await message.answer(
+                "⚠️ <b>Kechirasiz, ushbu test topilmadi yoki eskirgan.</b>\n\n"
+                "Iltimos, yangi test tuzing yoki <b>«📜 Mening testlarim»</b> bo‘limidan tanlang.",
+                reply_markup=InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [InlineKeyboardButton(text="🎲 Yangi test tuzish", callback_data="menu:create")],
+                        [InlineKeyboardButton(text="📜 Mening testlarim", callback_data="menu:history")],
+                    ]
+                ),
+                parse_mode="HTML",
+            )
+            return
 
     # Deep link orqali 1 vs 1 duelga kirilgan bo'lsa: /start duel_abc123
     if command.args and command.args.startswith("duel_"):
