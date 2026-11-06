@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import random
+import re
 import tempfile
 from typing import Any
 from google import genai
@@ -11,6 +12,61 @@ from google.genai import types
 from config import GEMINI_API_KEY, DEFAULT_MODEL
 
 logger = logging.getLogger(__name__)
+
+
+def is_english_grammar_or_formula_content(
+    topic: str | None = None,
+    text: str | None = None,
+    filename: str | None = None,
+) -> bool:
+    """Mavzu, matn yoki fayl nomi ingliz tili grammatikasi, zamonlar va formulalarga oidligini aniqlash."""
+    combined = f"{topic or ''} {filename or ''} {(text or '')[:15000]}".lower()
+
+    # 1. Zamonlar va asosiy grammatik mavzular
+    tense_keywords = [
+        "present simple", "present continuous", "present progressive",
+        "past simple", "past continuous", "past progressive",
+        "present perfect", "past perfect", "future simple",
+        "future continuous", "future perfect", "conditionals",
+        "passive voice", "active voice", "modal verbs", "modal verb",
+        "gerund", "infinitive", "reported speech", "relative clauses",
+        "irregular verbs", "question tags", "english grammar",
+        "english tenses", "tenses formula", "formula of tenses",
+        "grammar formula", "grammatika formulalari", "zamon formulalari",
+        "ingliz tili zamonlari", "ingliz tili grammatika",
+    ]
+    if any(k in combined for k in tense_keywords):
+        return True
+
+    # 2. Formula sintaksisi va tuzilishi
+    formula_patterns = [
+        r"\b(s|subject)\s*\+\s*(am|is|are|was|were|have|has|had|do|does|did|will|verb|v1|v2|v3|v-ing|ving|ved)\b",
+        r"\b(am|is|are)\s*\+\s*(v-ing|ving|not|\+)\b",
+        r"\b(have|has|had)\s*\+\s*(v3|ved|been|not|\+)\b",
+        r"\b(do|does|did)\s*\+\s*(s|subject|not|\+)\b",
+        r"\b(was|were)\s*\+\s*(v-ing|ving|not|\+)\b",
+        r"\bwill\s*\+\s*(v1|be|have)\b",
+        r"\b(s\s*\+\s*v(1|2|s|es)?)\b",
+        r"\b(s\s*\+\s*to\s*be)\b",
+        r"\bam\s*/\s*is\s*/\s*are\b",
+        r"\bwas\s*/\s*were\b",
+        r"\bdo\s*/\s*does\b",
+        r"\bhave\s*/\s*has\b",
+        r"\bverb\s*\+\s*(ing|ed|s|es)\b",
+        r"\bv-ing\b",
+        r"\bv1\s*/\s*v2\b",
+    ]
+    for pat in formula_patterns:
+        if re.search(pat, combined, re.IGNORECASE):
+            return True
+
+    # 3. Ingliz tili va qoida/formula birikmasi
+    has_english = any(w in combined for w in ["ingliz", "english", "ielts", "cefr"])
+    has_formula = any(w in combined for w in ["formula", "qoida", "tuzilish", "struktur", "tense", "zamon", "verb", "gap", "tushib qolgan"])
+    if has_english and has_formula:
+        return True
+
+    return False
 
 
 class GeminiService:
@@ -78,6 +134,54 @@ class GeminiService:
             )
             listening_sample_json = '    "audio_text": "Spoken text or dialogue...",\n'
 
+        is_grammar_formula = is_english_grammar_or_formula_content(
+            topic=topic,
+            text=text_content,
+            filename=file_name,
+        )
+
+        grammar_formula_clause = ""
+        if is_grammar_formula:
+            grammar_formula_clause = (
+                "\n"
+                "════════════════════════════════════════════════════════════════════\n"
+                "🚨 QAT'IY VA MAJBURIY TALAB (INGLIZ TILI FORMULALARI ASOSIDA GAP TO'LDIRISH TESTLARI):\n"
+                "════════════════════════════════════════════════════════════════════\n"
+                "Manbada ingliz tili grammatika formulalari, zamonlar (tenses), fe'l qoidalari yoki tuzilmalar berilgan.\n"
+                "Ushbu formulalar asosida savollar tuzishda QUYIDAGI TALABLARGA 100% AMAL QILISHINGIZ SHART:\n\n"
+                "1. QURUQ NAZARIY SAVOLLAR MUTLAQO TAQIQLANADI:\n"
+                "   - 'Present Continuous zamonining formulasi qanday?'\n"
+                "   - 'Qaysi formula to'g'ri?'\n"
+                "   - 'Ushbu gap qaysi zamonda?'\n"
+                "   - 'Qaysi yordamchi fe'l ishlatiladi?'\n"
+                "   KABI QURUQ NAZARIY VA YODLASH SAVOLLARI ASLO TUZILMASIN!\n\n"
+                "2. BARCHA SAVOLLAR AMALIY GAP TUZISH VA TUSHIB QOLGAN SO'ZNI TOPISH (FILL-IN-THE-BLANKS) SHAKLIDA BO'LISHI SHART:\n"
+                "   - Manbadagi formulaga mos ravishda to'g'ri, jonli va tabiiy inglizcha gap tuzing.\n"
+                "   - Gap ichida formulada ko'rsatilgan tekshirilishi kerak bo'lgan asosiy grammatik qism (yordamchi fe'l: am/is/are, was/were, have/has, do/does; yoki fe'l shakli: V-ing, V1, V2, V3, Vs) o'rniga '______' (pastki chiziq) qoldiring.\n"
+                "   - Masalan: 'He ______ watching TV right now.' yoki fe'l negizi bilan: 'He ______ (watch) TV right now.'\n\n"
+                "3. EGALARNI (SUBJECTS) VA SHAXSLARNI XILMA-XIL QILING:\n"
+                "   - Har bir savolda turli egalarni ishlating:\n"
+                "     * 3-shaxs birlik: 'He', 'She', 'It', 'My father'\n"
+                "     * 1-shaxs: 'I'\n"
+                "     * Ko'plik va 2-shaxs: 'They', 'We', 'You', 'The children'\n"
+                "   - Egaga qarab to'g'ri yordamchi fe'l yoki shakl tanlashni tekshiring:\n"
+                "     * Present Continuous-da: He/She/It uchun 'is'; I uchun 'am'; They/We/You uchun 'are'.\n"
+                "     * Present Simple-da: He/She/It uchun 'does/plays'; They/We/I uchun 'do/play'.\n"
+                "     * Past Simple-da: o'tgan zamon shakli (did/visited/went).\n\n"
+                "4. GAP TURLARI ARALASH BO'LSIN:\n"
+                "   - Darak gap (+): 'He ______ (read) a book right now.' -> ['is reading', 'are reading', 'am reading', 'reads']\n"
+                "   - Yordamchi fe'l: 'Look! The baby ______ sleeping.' -> ['is', 'are', 'am', 'be']\n"
+                "   - Inkor gap (-): 'They ______ not playing football at the moment.' -> ['are', 'is', 'am', 'do']\n"
+                "   - So'roq gap (?): '______ you doing your homework right now?' -> ['Are', 'Is', 'Am', 'Do']\n\n"
+                "5. VARIANTLAR (OPTIONS):\n"
+                "   - Variantlar aynan gapdagi '______' o'rniga tushadigan grammatik so'zlar bo'lsin.\n"
+                "   - 1 ta to'g'ri javob va qolgan variantlar grammatik chalg'ituvchilar bo'lsin.\n\n"
+                "6. IZOH (EXPLANATION) O'ZBEK TILIDA BO'LSIN:\n"
+                "   - Qaysi formula qo'llangani va nima sababdan aynan shu variant to'g'riligini o'zbek tilida aniq ko'rsating.\n"
+                "   - Masalan: 'Present Continuous formulasiga ko\\'ra (Subject + am/is/are + V-ing): \"He\" birlik olmoshi uchun \"is\" yordamchi fe\\'li ishlatiladi (He is watching).'\n"
+                "════════════════════════════════════════════════════════════════════\n\n"
+            )
+
         prompt = (
             f"Siz professional testolog, pedagog va metodistsiz.\n"
             f"Quyida berilgan manba asosida ROPPA-ROSA {count} TA sifatli, mantiqan to'g'ri va qiziqarli test (viktorina) savollarini tuzing.\n\n"
@@ -94,6 +198,7 @@ class GeminiService:
             f"4. explanation (Izoh): To'g'ri javob nima uchun to'g'riligini va asosiy qoidani qisqa tushuntirib bering (maksimal 180 belgi).\n"
             f"5. BUTUN HUJJATNI QAMRAB OLING: Savollarni faqat hujjat boshidan emas, butun matn bo'ylab (boshi, o'rtasi, oxiri, turli darslar) aralash holda tanlang.\n"
             f"6. Til qoidasi: Agar mavzu xorijiy til (ingliz tili, rus tili va h.k.) o'rganishga oid bo'lsa, test savollari va variantlari o'sha o'rganilayotgan tilda (yoki grammatika/lug'at topshirig'i shaklida), izohi (explanation) esa o'zbek tilida tushuntirilsin. Boshqa fanlar uchun savollar to'liq o'zbek tilida bo'lsin.\n"
+            f"{grammar_formula_clause}"
             f"{listening_clause}"
             f"7. Javobingiz FAQAT aynan {count} ta elementdan iborat JSON array formatida bo'lsin:\n"
             "[\n"
@@ -121,7 +226,12 @@ class GeminiService:
                 or file_mime == "application/pdf"
             )
 
-            if file_bytes and is_media:
+            # Agar matn mavjud bo'lsa (masalan PDF/Word dan ajratib olingan matn), bevosita matndan foydalanish (tezkor va ishonchli)
+            if text_content and len(text_content.strip()) > 50:
+                prompt += f"MANBA MATNI:\n\"\"\"\n{text_content[:200000]}\n\"\"\"\n"
+                if topic:
+                    prompt += f"\nANIQ MAVZU / QOIDALAR YO'NALISHI: «{topic}»\n"
+            elif file_bytes and is_media:
                 suffix = os.path.splitext(file_name)[1] if file_name else ".tmp"
                 with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tf:
                     tf.write(file_bytes)
@@ -143,8 +253,8 @@ class GeminiService:
 
                 contents.append(uploaded_file)
                 prompt += f"MANBA: Yuqorida yuklangan media fayl ('{file_name or 'fayl'}') ning to'liq mazmunidan foydalaning."
-            elif text_content:
-                prompt += f"MANBA MATNI:\n\"\"\"\n{text_content[:200000]}\n\"\"\""
+                if topic:
+                    prompt += f"\nANIQ MAVZU / QOIDALAR YO'NALISHI: «{topic}»\n"
             else:
                 prompt += (
                     f"MANBA MAVZUSI (ANIQ MAVZU): «{topic or 'Umumiy bilimlar'}»\n\n"
@@ -158,10 +268,12 @@ class GeminiService:
 
             models_to_try = [
                 self.model,
+                "gemini-flash-lite-latest",
                 "gemini-3.5-flash-lite",
                 "gemini-3.1-flash-lite",
-                "gemini-flash-lite-latest",
+                "gemini-3.5-flash",
                 "gemini-3.8-flash",
+                "gemini-flash-latest",
             ]
             seen = set()
             unique_models = [m for m in models_to_try if m and not (m in seen or seen.add(m))]
@@ -325,6 +437,19 @@ class GeminiService:
             "hard": "Qiyin (chuqur bilim talab qiluvchi)",
         }.get(difficulty, "O'rta (standart daraja)")
 
+        is_grammar_formula = is_english_grammar_or_formula_content(text=text_content)
+        grammar_batch_clause = ""
+        if is_grammar_formula:
+            grammar_batch_clause = (
+                "\n🚨 QAT'IY VA MAJBURIY TALAB (INGLIZ TILI FORMULALARI ASOSIDA GAP TO'LDIRISH TESTLARI):\n"
+                "- Har bir dars/mavzu/zamon bo'yicha quruq nazariy savollar (masalan 'Present continuous formulasi qanaqa?') MUTLAQO TUZILMASIN!\n"
+                "- Barcha savollar amaliy gap tuzish va bo'sh o'rinni to'ldirish (fill-in-the-blank) shaklida bo'lsin.\n"
+                "- Gapda formulaga mos tekshiriladigan so'z (am/is/are, was/were, have/has, do/does, V-ing va h.k.) o'rniga '______' pastki chiziq qo'yilsin (Masalan: 'He ______ watching TV right now.').\n"
+                "- Turli egalar ('He', 'She', 'It', 'I', 'They', 'We') va turli gap shakllari (+, -, ?) aralash qatnashsin.\n"
+                "- Variantlar o'sha bo'sh joyga qo'yiladigan shakllar bo'lsin (masalan: ['is', 'are', 'am', 'be']).\n"
+                "- 'explanation' o'zbek tilida qoidani ko'rsatib tushuntirilsin.\n\n"
+            )
+
         prompt = (
             "Siz professional pedagog-testolog va metodistsiz.\n"
             "Quyida berilgan hujjat (darslik, konspekt yoki lug'at)da bir nechta darslar, unitlar yoki mavzular mavjud.\n"
@@ -338,6 +463,7 @@ class GeminiService:
             "2. 'topic_title' maydonida mavzuning aniq nomi bo'lsin (masalan: 'Lesson 1: Greetings', 'Unit 2: Family members' yoki '1-dars: Oila').\n"
             "3. Savollar va variantlar o'sha mavzuning lug'ati va faktlariga mos bo'lsin.\n"
             "4. Har bir savolda 'question', 'options', 'correct_id' (0 dan boshlanadi), va 'explanation' bo'lsin.\n"
+            f"{grammar_batch_clause}"
             "5. Javobingiz FAQAT quyidagi JSON ro'yxati formatida bo'lsin:\n"
             "[\n"
             "  {\n"
@@ -357,10 +483,12 @@ class GeminiService:
 
         models_to_try = [
             self.model,
+            "gemini-flash-lite-latest",
             "gemini-3.5-flash-lite",
             "gemini-3.1-flash-lite",
-            "gemini-flash-lite-latest",
+            "gemini-3.5-flash",
             "gemini-3.8-flash",
+            "gemini-flash-latest",
         ]
         seen = set()
         unique_models = [m for m in models_to_try if m and not (m in seen or seen.add(m))]

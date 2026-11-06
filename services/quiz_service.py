@@ -294,6 +294,78 @@ LOCAL_QUIZ_BANK = {
             "correct_id": 1,
             "explanation": "'However' (biroq, ammo) zidlovchi bog'lovchi hisoblanadi.",
         },
+        {
+            "question": "He ______ (read) a book right now. (Present Continuous)",
+            "options": ["is reading", "are reading", "am reading", "reads"],
+            "correct_id": 0,
+            "explanation": "Present Continuous formulasiga ko'ra (Subject + am/is/are + V-ing): 'He' uchun 'is reading' to'g'ri bo'ladi.",
+        },
+        {
+            "question": "Look! The children ______ playing in the playground.",
+            "options": ["are", "is", "am", "be"],
+            "correct_id": 0,
+            "explanation": "'The children' ko'plik ot bo'lgani sababli Present Continuous-da 'are' yordamchi fe'li ishlatiladi.",
+        },
+        {
+            "question": "I ______ (write) an email to my teacher at the moment.",
+            "options": ["am writing", "is writing", "are writing", "writes"],
+            "correct_id": 0,
+            "explanation": "Present Continuous formulasiga ko'ra 'I' shaxs olmoshi uchun 'am writing' ishlatiladi.",
+        },
+        {
+            "question": "She ______ not like spicy food. (Present Simple)",
+            "options": ["does", "do", "is", "has"],
+            "correct_id": 0,
+            "explanation": "Present Simple inkor formulasiga ko'ra (S + do/does + not + V1): 'She' uchun 'does' yordamchi fe'li qo'yiladi.",
+        },
+        {
+            "question": "My father ______ to work by car every morning.",
+            "options": ["goes", "go", "is going", "went"],
+            "correct_id": 0,
+            "explanation": "Present Simple formulasiga ko'ra (S + V1/Vs): 3-shaxs birlik (He) uchun fe'lga '-es' qo'shiladi: 'goes'.",
+        },
+        {
+            "question": "______ you watch the football match last night? (Past Simple)",
+            "options": ["Did", "Do", "Were", "Have"],
+            "correct_id": 0,
+            "explanation": "Past Simple so'roq formulasiga ko'ra (Did + Subject + V1): o'tgan zamon savolida 'Did' ishlatiladi.",
+        },
+        {
+            "question": "We ______ (visit) the museum yesterday.",
+            "options": ["visited", "visit", "visiting", "are visiting"],
+            "correct_id": 0,
+            "explanation": "Past Simple formulasiga ko'ra (Subject + V2/Ved): o'tgan zamonda fe'lning 2-shakli 'visited' ishlatiladi.",
+        },
+        {
+            "question": "At 8 PM yesterday, they ______ (watch) a movie. (Past Continuous)",
+            "options": ["were watching", "was watching", "watched", "are watching"],
+            "correct_id": 0,
+            "explanation": "Past Continuous formulasiga ko'ra (Subject + was/were + V-ing): 'They' uchun 'were watching' qo'yiladi.",
+        },
+        {
+            "question": "She ______ already finished her project. (Present Perfect)",
+            "options": ["has", "have", "is", "had"],
+            "correct_id": 0,
+            "explanation": "Present Perfect formulasiga ko'ra (Subject + have/has + V3): 'She' uchun 'has' ishlatiladi.",
+        },
+        {
+            "question": "I think it ______ rain tomorrow. (Future Simple)",
+            "options": ["will", "is", "shall", "does"],
+            "correct_id": 0,
+            "explanation": "Future Simple formulasiga ko'ra (Subject + will + V1): kelasi zamon taxmini uchun 'will' ishlatiladi.",
+        },
+        {
+            "question": "______ they playing football right now? (Present Continuous)",
+            "options": ["Are", "Is", "Do", "Did"],
+            "correct_id": 0,
+            "explanation": "Present Continuous so'roq formulasiga ko'ra (Am/Is/Are + S + V-ing): 'they' uchun gap boshida 'Are' keladi.",
+        },
+        {
+            "question": "We ______ not go to school on Sundays.",
+            "options": ["do", "does", "are", "have"],
+            "correct_id": 0,
+            "explanation": "Present Simple inkor formulasiga ko'ra (S + do/does + not + V1): 'We' uchun 'do' ishlatiladi.",
+        },
     ],
     "umumiy": [
         {
@@ -602,6 +674,15 @@ def get_offline_quiz_questions(
         cat = random.choice(list(LOCAL_QUIZ_BANK.keys()))
 
     pool = list(LOCAL_QUIZ_BANK.get(cat, LOCAL_QUIZ_BANK["umumiy"]))
+
+    # Agar ingliz tili formulalari yoki zamonlari so'ralgan bo'lsa, gap to'ldirish savollarini oldinga qo'yish
+    if cat == "ingliz_tili" and any(k in lower for k in ["continuous", "present", "past", "formula", "zamon", "tense", "verb", "gap"]):
+        fill_blanks = [q for q in pool if "______" in q.get("question", "") or "___" in q.get("question", "")]
+        if len(fill_blanks) >= count:
+            pool = fill_blanks
+        else:
+            others = [q for q in pool if q not in fill_blanks]
+            pool = fill_blanks + others
 
     # Avval ishlatilgan savollarni chetlatish
     if used_questions:

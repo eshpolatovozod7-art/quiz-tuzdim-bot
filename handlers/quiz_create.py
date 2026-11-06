@@ -24,7 +24,7 @@ from keyboards.inline_keyboards import (
     get_quiz_timer_keyboard,
     get_quiz_card_keyboard,
 )
-from services.gemini_service import GeminiService
+from services.gemini_service import GeminiService, is_english_grammar_or_formula_content
 from services.quiz_service import (
     extract_text_from_file,
     get_offline_quiz_questions,
@@ -164,6 +164,14 @@ async def process_document_message(message: Message, bot: Bot, state: FSMContext
         save_user_media(message.from_user.id, file_bytes, file_name, doc.mime_type or "application/pdf", text_content=text_content)
         clean_title = os.path.splitext(file_name)[0][:35]
 
+        is_grammar = is_english_grammar_or_formula_content(topic=clean_title, text=text_content, filename=file_name)
+        grammar_notice = ""
+        if is_grammar:
+            grammar_notice = (
+                "\n\n🇬🇧 <b>Ingliz tili grammatika/formula hujjati aniqlandi!</b>\n"
+                "<i>AI formulalar asosida amaliy gaplar tuzib, tushib qolgan so‘zni topish (fill-in-the-blank, masalan: He ______ watching TV -> am/is/are) shaklida testlar tuzadi.</i>"
+            )
+
         caption = (message.caption or "").lower()
         is_batch_requested = any(k in caption for k in ["har bir", "alohida", "mavzular", "darslar", "20 ta", "bo'lib", "mavzuga", "darsga"])
 
@@ -173,6 +181,9 @@ async def process_document_message(message: Message, bot: Bot, state: FSMContext
                 doc_title=clean_title,
                 batch_text=text_content,
                 batch_title=clean_title,
+                file_bytes=file_bytes,
+                file_name=file_name,
+                mime_type=doc.mime_type or "application/pdf",
             )
             kb = InlineKeyboardMarkup(
                 inline_keyboard=[
@@ -190,7 +201,8 @@ async def process_document_message(message: Message, bot: Bot, state: FSMContext
                 ]
             )
             await message.answer(
-                f"📚 <b>«{html.escape(clean_title, quote=False)}» qabul qilindi!</b>\n\n"
+                f"📚 <b>«{html.escape(clean_title, quote=False)}» qabul qilindi!</b>"
+                f"{grammar_notice}\n\n"
                 f"Fayldagi <b>har bir mavzu/dars uchun</b> alohida testlar to‘plami tuziladi.\n"
                 f"Har bir mavzuda nechtadan savol bo‘lsin? Tanlang: 👇",
                 reply_markup=kb,
@@ -221,7 +233,8 @@ async def process_document_message(message: Message, bot: Bot, state: FSMContext
                 ]
             )
             await message.answer(
-                f"📄 <b>«{html.escape(clean_title, quote=False)}» qabul qilindi!</b>\n\n"
+                f"📄 <b>«{html.escape(clean_title, quote=False)}» qabul qilindi!</b>"
+                f"{grammar_notice}\n\n"
                 f"Ushbu fayldan qanday test tuzmoqchisiz?\n\n"
                 f"• 🎯 <b>Bitta umumiy test</b> — butun hujjat bo‘yicha bitta umumiy test\n"
                 f"• 📚 <b>Har bir mavzuga alohida testlar</b> — fayldagi har bir mavzu (Unit/Lesson) uchun alohida-alohida testlar to‘plamini tuzish\n\n"
@@ -234,6 +247,9 @@ async def process_document_message(message: Message, bot: Bot, state: FSMContext
         await start_quiz_wizard(
             message, state,
             text_content=text_content,
+            file_bytes=file_bytes,
+            file_mime=doc.mime_type or "application/pdf",
+            file_name=file_name,
             label=clean_title,
             source_type="doc",
             user_id=message.from_user.id,
@@ -274,6 +290,9 @@ async def handle_doc_single_mode(callback: CallbackQuery, state: FSMContext) -> 
             callback.message,
             state,
             text_content=text_content,
+            file_bytes=data.get("file_bytes"),
+            file_mime=data.get("mime_type"),
+            file_name=data.get("file_name"),
             label=clean_title,
             source_type="doc",
             user_id=callback.from_user.id,
@@ -673,7 +692,21 @@ async def process_plain_text(message: Message, state: FSMContext) -> None:
         )
         return
 
-    if len(text) > 200:
+    is_grammar = is_english_grammar_or_formula_content(topic=text, text=text)
+    if is_grammar:
+        clean_topic = clean_topic_input(text)
+        title = clean_topic[:35]
+        save_user_media(message.from_user.id, text_content=text)
+        await start_quiz_wizard(
+            message,
+            state,
+            topic=clean_topic,
+            text_content=text,
+            label=title,
+            source_type="text",
+            user_id=message.from_user.id,
+        )
+    elif len(text) > 200:
         # Uzun matn bo'lsa, konspekt deb hisoblaymiz
         title = text[:35].replace("\n", " ").strip() + "..."
         save_user_media(message.from_user.id, text_content=text)
@@ -714,11 +747,21 @@ async def start_quiz_wizard(
         quiz_timer=0,
     )
 
+    is_grammar = is_english_grammar_or_formula_content(
+        topic=topic or source_label,
+        text=text_content,
+        filename=file_name,
+    )
+    grammar_note = ""
+    if is_grammar:
+        grammar_note = "\n💡 <i>Ingliz tili formulalari asosida gap to‘ldirish (fill-in-the-blank) savollari tuziladi.</i>\n"
+
     text = (
         "✦ • ──────────────────── • ✦\n"
         "🎯 <b>TEST SOZLAMALARI (1/4-QADAM)</b>\n"
         "✦ • ──────────────────── • ✦\n\n"
-        f"📌 <b>Manba:</b> <i>«{html.escape(source_label, quote=False)}»</i>\n\n"
+        f"📌 <b>Manba:</b> <i>«{html.escape(source_label, quote=False)}»</i>\n"
+        f"{grammar_note}\n"
         "1️⃣ <b>Nechta test savoli tuzilsin?</b>\n"
         "👇 <i>Quyidagi sonlardan birini tanlang:</i>"
     )
@@ -836,7 +879,11 @@ async def handle_qcfg_timer(callback: CallbackQuery, bot: Bot, state: FSMContext
         topic = topic or source_label
     else:
         cached_media = get_user_media(user_id)
-        file_bytes = cached_media.get("bytes") if cached_media else None
+        if cached_media:
+            file_bytes = file_bytes or cached_media.get("bytes")
+            file_mime = file_mime or cached_media.get("mime")
+            file_name = file_name or cached_media.get("name")
+            text_content = text_content or cached_media.get("text")
 
     # Avval berilgan savollarni olish (takrorlanmaslik uchun)
     used_q = await get_user_used_questions(user_id, source_label)

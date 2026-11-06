@@ -123,6 +123,7 @@ FAN_TOPICS: dict[str, dict[str, Any]] = {
     "ingliz_tili": {
         "title": "🇬🇧 Ingliz tili",
         "topics": [
+            ("📝 Zamonlar formulalari (Amaliy)", "English Tenses Grammar Formulas (Fill in the blanks)"),
             ("Present Simple & Continuous", "Present Simple and Present Continuous"),
             ("Past Simple & Continuous", "Past Simple and Past Continuous"),
             ("Present Perfect", "Present Perfect tense"),
