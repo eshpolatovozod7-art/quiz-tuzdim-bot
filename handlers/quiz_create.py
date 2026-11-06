@@ -173,7 +173,10 @@ async def process_document_message(message: Message, bot: Bot, state: FSMContext
             )
 
         caption = (message.caption or "").lower()
-        is_batch_requested = any(k in caption for k in ["har bir", "alohida", "mavzular", "darslar", "20 ta", "bo'lib", "mavzuga", "darsga"])
+        is_batch_requested = any(k in caption for k in [
+            "har bir", "alohida", "mavzular", "darslar", "20 ta", "bo'lib", "bolib",
+            "mavzuga", "darsga", "unit", "har biriga", "ajrat", "mavzusi"
+        ])
 
         if is_batch_requested:
             await state.update_data(
@@ -215,6 +218,8 @@ async def process_document_message(message: Message, bot: Bot, state: FSMContext
             await state.update_data(
                 doc_text=text_content,
                 doc_title=clean_title,
+                batch_text=text_content,
+                batch_title=clean_title,
                 file_bytes=file_bytes,
                 file_name=file_name,
                 mime_type=doc.mime_type or "application/pdf",
@@ -369,6 +374,9 @@ async def handle_batch_timer(callback: CallbackQuery, bot: Bot, state: FSMContex
         cached = get_user_media(user_id)
         if cached:
             text_content = cached.get("text") or ""
+            if not text_content and cached.get("bytes") and cached.get("name"):
+                text_content = extract_text_from_file(cached["bytes"], cached["name"])
+            clean_title = clean_title or cached.get("name") or "Hujjat"
 
     if not text_content:
         await callback.answer("Hujjat matni topilmadi", show_alert=True)
@@ -647,7 +655,19 @@ async def process_plain_text(message: Message, state: FSMContext) -> None:
         return
 
     # Foydalanuvchi "har bir mavzuga test qilib ber" deb yozsa va hujjat nazarda tutilgan bo'lsa
-    if ("har bir mavzu" in lower_text or "har bir dars" in lower_text or "alohida mavzu" in lower_text) and any(w in lower_text for w in ["fayl", "pdf", "word", "doc", "kitob", "hujjat"]):
+    batch_keywords = [
+        "har bir mavzu", "har bir dars", "alohida mavzu", "alohida dars",
+        "har biriga", "mavzularga bo'l", "mavzularga bol", "har bir mavzudan",
+        "har bir darsdan", "mavzular bo'yicha", "mavzular boyicha", "darslar bo'yicha",
+        "mavzularga ajrat", "har bir unit", "alohida test", "har bir mavzuga", "har bir darsga",
+        "har bir mavzusiga", "mavzularga bo'lib", "mavzularga bolib"
+    ]
+    is_batch_phrase = any(bk in lower_text for bk in batch_keywords) or (
+        any(k in lower_text for k in ["har bir", "alohida", "bo'lib", "bolib", "ajratib"])
+        and any(w in lower_text for w in ["mavzu", "dars", "test", "savol", "unit"])
+    )
+
+    if is_batch_phrase:
         cached = get_user_media(message.from_user.id)
         if cached and (cached.get("text") or cached.get("bytes")):
             clean_title = cached.get("name") or "Yuklangan hujjat"
@@ -661,6 +681,9 @@ async def process_plain_text(message: Message, state: FSMContext) -> None:
                     batch_title=clean_title,
                     doc_text=text_content,
                     doc_title=clean_title,
+                    file_bytes=cached.get("bytes"),
+                    file_name=cached.get("name"),
+                    mime_type=cached.get("mime"),
                 )
                 kb = InlineKeyboardMarkup(
                     inline_keyboard=[

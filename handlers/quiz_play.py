@@ -146,6 +146,26 @@ async def handle_stop_command(message: Message, bot: Bot) -> None:
         await message.answer("ℹ️ Hozirda faol test mavjud emas.")
 
 
+@router.callback_query(F.data.startswith("play_quiz:"))
+async def handle_play_quiz_alias(callback: CallbackQuery, bot: Bot) -> None:
+    """play_quiz callback aliasini qayta ishlash."""
+    quiz_id = callback.data.split(":")[1]
+    quiz = await get_quiz(quiz_id)
+    if not quiz:
+        await callback.answer("⚠️ Kechirasiz, ushbu test topilmadi.", show_alert=True)
+        return
+
+    text = format_quiz_single_ready_text(quiz)
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Men tayyorman!", callback_data=f"qrun:start:{quiz_id}")]
+        ]
+    )
+    if callback.message:
+        await callback.message.answer(text=text, reply_markup=kb, parse_mode="HTML")
+    await callback.answer()
+
+
 @router.callback_query(F.data.startswith("qrun:ready:"))
 async def handle_quiz_run_ready(callback: CallbackQuery, bot: Bot) -> None:
     """Test boshlashdan oldin @QuizBot kabi yagona 'Men tayyorman!' ekranini ko'rsatish."""
