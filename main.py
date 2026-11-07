@@ -125,8 +125,26 @@ async def main() -> None:
 
     scheduler_task = None
     try:
-        await set_bot_commands(bot)
-        bot_info = await bot.get_me()
+        # Tarmoqqa (Telegram API) ulanishni kutish (tizim endi yoqilgan yoki Wi-Fi ulanayotgan bo'lsa)
+        bot_info = None
+        max_retries = 20
+        for attempt in range(1, max_retries + 1):
+            try:
+                bot_info = await bot.get_me()
+                break
+            except Exception as conn_err:
+                logger.warning("Telegram tarmog'iga ulanish kutilmoqda (urinish %d/%d): %s", attempt, max_retries, conn_err)
+                await asyncio.sleep(3)
+
+        if not bot_info:
+            logger.error("Telegram serveriga ulanib bo'lmadi, qayta ishga tushiriladi...")
+            return
+
+        try:
+            await set_bot_commands(bot)
+        except Exception as cmd_err:
+            logger.warning("Buyruqlarni o'rnatishda ogohlantirish: %s", cmd_err)
+
         logger.info("Bot muvaffaqiyatli ishga tushdi: @%s (%s)", bot_info.username, bot_info.first_name)
 
         scheduler_task = asyncio.create_task(channel_scheduler_worker(bot))
