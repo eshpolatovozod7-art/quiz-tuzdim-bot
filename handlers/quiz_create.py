@@ -1004,6 +1004,11 @@ async def handle_qcfg_timer(callback: CallbackQuery, bot: Bot, state: FSMContext
     await bot.send_message(
         chat_id=target_chat_id,
         text=card_text,
-        reply_markup=get_quiz_card_keyboard(quiz_id, bot_username=bot_username, is_group=False),
+        reply_markup=get_quiz_card_keyboard(
+            quiz_id,
+            bot_username=bot_username,
+            is_group=False,
+            title=clean_title,
+        ),
         parse_mode="HTML",
     )

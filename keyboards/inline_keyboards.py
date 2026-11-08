@@ -357,6 +357,7 @@ def get_quiz_card_keyboard(
     has_media: bool = False,
     full_menu: bool = False,
     is_group: bool = False,
+    title: str = "",
 ) -> InlineKeyboardMarkup:
     """Quiz kartochkasi klaviaturasi.
     - Guruhda bo'lsa (is_group=True): QuizBot kabi yagona 'Men tayyorman!' tugmasi.
@@ -369,6 +370,10 @@ def get_quiz_card_keyboard(
             ]
         )
 
+    import urllib.parse
+    share_text = f"🎲 «{title}» testini ishlang! Test tuzdim bot orqali tayyorlangan." if title else "🎲 Ushbu testni ishlang! Test tuzdim bot orqali tayyorlangan."
+    share_url = f"https://t.me/share/url?url=https://t.me/{bot_username}?start=quiz_{quiz_id}&text={urllib.parse.quote(share_text)}"
+
     if not full_menu:
         return InlineKeyboardMarkup(
             inline_keyboard=[
@@ -380,20 +385,28 @@ def get_quiz_card_keyboard(
                 ],
                 [
                     InlineKeyboardButton(
-                        text="👥 Guruhda testni boshlash",
-                        url=f"https://t.me/{bot_username}?startgroup=poll_{quiz_id}",
-                    ),
-                ],
-                [
-                    InlineKeyboardButton(
                         text="📤 Do'stlarga ulashish",
-                        switch_inline_query=f"quiz_{quiz_id}",
+                        url=share_url,
+                    ),
+                    InlineKeyboardButton(
+                        text="👥 Guruhda boshlash",
+                        url=f"https://t.me/{bot_username}?startgroup=poll_{quiz_id}",
                     ),
                 ],
                 [
                     InlineKeyboardButton(
                         text="⚙️ Boshqa amallar (PDF, Taymer...)",
                         callback_data=f"qcard:more:{quiz_id}",
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="📜 Mening testlarim",
+                        callback_data="menu:history",
+                    ),
+                    InlineKeyboardButton(
+                        text="🏠 Bosh menyu",
+                        callback_data="menu:home",
                     ),
                 ],
             ]
@@ -409,14 +422,12 @@ def get_quiz_card_keyboard(
         ],
         [
             InlineKeyboardButton(
+                text="📤 Do'stlarga ulashish",
+                url=share_url,
+            ),
+            InlineKeyboardButton(
                 text="👥 Guruhda testni boshlash",
                 url=f"https://t.me/{bot_username}?startgroup=poll_{quiz_id}",
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                text="📤 Do'stlarga ulashish",
-                switch_inline_query=f"quiz_{quiz_id}",
             ),
         ],
         [
@@ -445,9 +456,15 @@ def get_quiz_card_keyboard(
         ])
     rows.append([
         InlineKeyboardButton(
-            text="🔙 Qisqa menyuga qaytish",
+            text="📜 Mening testlarim",
+            callback_data="menu:history",
+        ),
+        InlineKeyboardButton(
+            text="🔙 Qisqa menyu",
             callback_data=f"qcard:less:{quiz_id}",
         ),
+    ])
+    rows.append([
         InlineKeyboardButton(
             text="🏠 Bosh menyu",
             callback_data="menu:home",
@@ -464,9 +481,11 @@ def get_quiz_finish_keyboard(
     correct: int = 0,
     total: int = 0,
     percentage: int = 0,
+    title: str = "",
     **kwargs: Any,
 ) -> InlineKeyboardMarkup:
     """Test yakunlanganda natijalar klaviaturasi (ulashish, qayta ishlash, sertifikat)."""
+    import urllib.parse
     rows = []
     if percentage >= 70 or (total > 0 and correct >= total * 0.7):
         rows.append([
@@ -475,10 +494,14 @@ def get_quiz_finish_keyboard(
                 callback_data=f"qexp:cert:{quiz_id}:{correct}:{total}:{percentage}",
             )
         ])
+
+    share_msg = f"🎲 Men «{title}» testida {total} tadan {correct} ta to'g'ri topdim ({percentage}%)! Siz ham bilimingizni sinab ko'ring:" if title else "🎲 Ushbu testni ishlang va bilimingizni sinab ko'ring:"
+    share_url = f"https://t.me/share/url?url=https://t.me/{bot_username}?start=quiz_{quiz_id}&text={urllib.parse.quote(share_msg)}"
+
     rows.append([
         InlineKeyboardButton(
             text="📤 Do'stlarga ulashish",
-            switch_inline_query=f"quiz_{quiz_id}",
+            url=share_url,
         ),
         InlineKeyboardButton(
             text="👥 Guruhda o'ynash",
@@ -500,12 +523,88 @@ def get_quiz_finish_keyboard(
         ])
     rows.append([
         InlineKeyboardButton(
+            text="📜 Mening testlarim",
+            callback_data="menu:history",
+        ),
+        InlineKeyboardButton(
             text="🎲 Yangi test tuzish",
             callback_data="menu:topic",
         ),
+    ])
+    rows.append([
         InlineKeyboardButton(
             text="🏠 Asosiy menyu",
             callback_data="menu:home",
         ),
     ])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def get_my_quizzes_keyboard(
+    tab: str,
+    page: int,
+    total_pages: int,
+    quizzes: list[dict[str, Any]],
+    created_count: int,
+    taken_count: int,
+) -> InlineKeyboardMarkup:
+    """Mening testlarim bo'limi uchun sahifalash va tablar bilan interaktiv klaviatura."""
+    rows = []
+
+    # 1. Tablar: Tuzgan testlarim vs Ishlagan testlarim
+    created_tab_text = f"📝 Tuzganlarim ({created_count})"
+    taken_tab_text = f"🎯 Ishlaganlarim ({taken_count})"
+    if tab == "created":
+        created_tab_text = f"🟢 {created_tab_text}"
+    else:
+        taken_tab_text = f"🟢 {taken_tab_text}"
+
+    rows.append([
+        InlineKeyboardButton(text=created_tab_text, callback_data="history:tab:created:1"),
+        InlineKeyboardButton(text=taken_tab_text, callback_data="history:tab:taken:1"),
+    ])
+
+    # 2. Joriy sahifadagi testlar
+    start_num = (page - 1) * 6 + 1
+    for idx, q in enumerate(quizzes, start=start_num):
+        q_id = q["quiz_id"]
+        raw_title = q.get("title", "Test")
+        title = raw_title[:23] + "..." if len(raw_title) > 26 else raw_title
+        if tab == "created":
+            count = q.get("question_count", len(q.get("questions", [])))
+            tm = q.get("timer_seconds", 0)
+            tm_str = "Cheksiz" if tm == 0 else f"{tm}s"
+            btn_text = f"{idx}. 🎯 {title} ({count} ta, ⏱ {tm_str})"
+        else:
+            correct = q.get("correct_count", 0)
+            total = q.get("total_count", 0)
+            pct = q.get("percentage", 0)
+            btn_text = f"{idx}. 🎯 {title} (✅ {correct}/{total}, {pct}%)"
+
+        rows.append([
+            InlineKeyboardButton(text=btn_text, callback_data=f"qopen:{q_id}")
+        ])
+
+    # 3. Sahifalash (Pagination)
+    if total_pages > 1:
+        nav_row = []
+        if page > 1:
+            nav_row.append(
+                InlineKeyboardButton(text="◀️ Oldingi", callback_data=f"history:page:{tab}:{page - 1}")
+            )
+        nav_row.append(
+            InlineKeyboardButton(text=f"📄 {page}/{total_pages}", callback_data="history:noop")
+        )
+        if page < total_pages:
+            nav_row.append(
+                InlineKeyboardButton(text="Keyingi ▶️", callback_data=f"history:page:{tab}:{page + 1}")
+            )
+        rows.append(nav_row)
+
+    # 4. Asosiy harakatlar
+    rows.append([
+        InlineKeyboardButton(text="🎲 Yangi test tuzish", callback_data="menu:create"),
+        InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="menu:home"),
+    ])
+
     return InlineKeyboardMarkup(inline_keyboard=rows)

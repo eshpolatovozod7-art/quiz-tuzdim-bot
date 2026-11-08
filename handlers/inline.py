@@ -9,7 +9,7 @@ from aiogram.types import (
     InlineKeyboardButton,
 )
 
-from database.db import get_quiz, get_user_quizzes
+from database.db import get_quiz, get_user_quizzes, get_user_taken_quizzes
 
 router = Router()
 
@@ -72,14 +72,24 @@ async def handle_inline_query(inline_query: InlineQuery, bot: Bot) -> None:
             await inline_query.answer(results=[result], cache_time=5, is_personal=True)
             return
 
-    # Foydalanuvchining o'z testlarini inline orqali chiqarish
-    user_quizzes = await get_user_quizzes(inline_query.from_user.id, limit=10)
+    # Foydalanuvchining o'z testlarini (tuzgan va ishlagan) inline orqali chiqarish
+    created = await get_user_quizzes(inline_query.from_user.id, limit=25)
+    taken = await get_user_taken_quizzes(inline_query.from_user.id, limit=25)
+
+    seen_ids = set()
+    user_quizzes = []
+    for q in created + taken:
+        qid = q["quiz_id"]
+        if qid not in seen_ids:
+            seen_ids.add(qid)
+            user_quizzes.append(q)
+
     results = []
 
     for q in user_quizzes:
         q_id = q["quiz_id"]
         q_title = q["title"]
-        q_count = q["question_count"]
+        q_count = q.get("question_count", len(q.get("questions", [])) if "questions" in q else 10)
         q_tm = q.get("timer_seconds", 15)
         q_timer = f"{q_tm} soniya" if (q_tm and q_tm > 0) else "15 soniya"
 

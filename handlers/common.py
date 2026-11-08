@@ -5,8 +5,24 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 from aiogram.filters import CommandStart, Command, CommandObject
 from aiogram.fsm.context import FSMContext
 
-from database.db import register_or_update_user, get_user_stats, get_user_quizzes, get_quiz, get_group_leaderboard
-from keyboards.inline_keyboards import get_main_menu_keyboard, get_quiz_card_keyboard, get_back_to_menu_keyboard
+import urllib.parse
+from database.db import (
+    register_or_update_user,
+    get_user_stats,
+    get_user_quizzes,
+    get_user_quizzes_count,
+    get_user_taken_quizzes,
+    get_user_taken_quizzes_count,
+    get_last_quiz_attempt,
+    get_quiz,
+    get_group_leaderboard,
+)
+from keyboards.inline_keyboards import (
+    get_main_menu_keyboard,
+    get_quiz_card_keyboard,
+    get_back_to_menu_keyboard,
+    get_my_quizzes_keyboard,
+)
 from handlers.quiz_play import send_quiz_polls_to_chat, send_group_quiz_lobby, format_quiz_ready_text, format_quiz_single_ready_text
 
 router = Router()
@@ -34,16 +50,42 @@ async def handle_start(message: Message, command: CommandObject, bot: Bot, state
                 await send_quiz_polls_to_chat(bot, message.chat.id, quiz)
                 return
 
-            # Shaxsiy chatda shared test ochilganda (@QuizBot kabi faqat "Men tayyorman!" chiqadi)
-            text = format_quiz_single_ready_text(quiz)
+            # Shaxsiy chatda shared test ochilganda tayyorgarlik va ulashish oynasi
+            bot_info = await bot.get_me()
+            bot_username = bot_info.username or "quiz_tuzdimbot"
+            text = format_quiz_single_ready_text(quiz, bot_username=bot_username)
+            q_title = quiz.get("title", "Test")
+            share_text = f"🎲 «{q_title}» testini ishlang! Test tuzdim bot orqali tayyorlangan."
+            share_url = f"https://t.me/share/url?url=https://t.me/{bot_username}?start=quiz_{quiz_id}&text={urllib.parse.quote(share_text)}"
+
             kb = InlineKeyboardMarkup(
                 inline_keyboard=[
                     [
                         InlineKeyboardButton(
-                            text="Men tayyorman!",
+                            text="▶️ Men tayyorman!",
                             callback_data=f"qrun:start:{quiz_id}",
                         )
-                    ]
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            text="📤 Do'stlarga ulashish",
+                            url=share_url,
+                        ),
+                        InlineKeyboardButton(
+                            text="👥 Guruhda o'ynash",
+                            url=f"https://t.me/{bot_username}?startgroup=poll_{quiz_id}",
+                        ),
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            text="📜 Mening testlarim",
+                            callback_data="menu:history",
+                        ),
+                        InlineKeyboardButton(
+                            text="🏠 Bosh menyu",
+                            callback_data="menu:home",
+                        ),
+                    ],
                 ]
             )
             await message.answer(
@@ -166,61 +208,109 @@ async def handle_stats(event: Message | CallbackQuery) -> None:
         await event.answer(text, reply_markup=kb, parse_mode="HTML")
 
 
+@router.callback_query(F.data == "history:noop")
+async def handle_history_noop(callback: CallbackQuery) -> None:
+    """Sahifa ko'rsatkich tugmasi bosilganda xabar chiqarmaslik."""
+    await callback.answer()
+
+
 @router.message(Command("tests", "myquizzes", "quizzes", "history"))
 @router.message(F.text.lower().in_(["mening testlarim", "testlarim", "mening testlarim 📜", "📜 mening testlarim"]))
 @router.callback_query(F.data == "menu:history")
+@router.callback_query(F.data.startswith("history:tab:"))
+@router.callback_query(F.data.startswith("history:page:"))
 async def handle_history(event: Message | CallbackQuery, bot: Bot) -> None:
-    """Foydalanuvchi tuzgan oxirgi testlar ro'yxati (Tugmalar bilan)."""
+    """Foydalanuvchi tuzgan va ishlagan barcha testlar ro'yxati (Sahifalash va Tablar bilan)."""
     user = event.from_user
     if not user:
         return
+
+    tab = "created"
+    page = 1
+
     if isinstance(event, CallbackQuery):
         await event.answer()
+        cdata = event.data or ""
+        if cdata.startswith("history:tab:"):
+            # history:tab:created:1 yoki history:tab:taken:1
+            parts = cdata.split(":")
+            if len(parts) >= 3:
+                tab = parts[2]
+            if len(parts) >= 4:
+                try:
+                    page = int(parts[3])
+                except ValueError:
+                    page = 1
+        elif cdata.startswith("history:page:"):
+            # history:page:created:2 yoki history:page:taken:1
+            parts = cdata.split(":")
+            if len(parts) >= 3:
+                tab = parts[2]
+            if len(parts) >= 4:
+                try:
+                    page = int(parts[3])
+                except ValueError:
+                    page = 1
 
-    quizzes = await get_user_quizzes(user.id, limit=8)
-    if not quizzes:
-        text = (
-            "📜 <b>Siz hali birorta ham test tuzmadingiz.</b>\n\n"
-            "«Test tuzish» tugmasi orqali birinchi testingizni yarating!"
-        )
-        kb = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="🎲 Test tuzish", callback_data="menu:create")],
-                [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="menu:home")],
-            ]
-        )
-        if isinstance(event, CallbackQuery) and event.message:
-            await event.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    created_count = await get_user_quizzes_count(user.id)
+    taken_count = await get_user_taken_quizzes_count(user.id)
+
+    # Agar foydalanuvchi tuzgan testlar bo'lmasa, lekin ishlagan testlari bo'lsa va tab belgilanmagan bo'lsa:
+    if created_count == 0 and taken_count > 0 and (not isinstance(event, CallbackQuery) or event.data == "menu:history"):
+        tab = "taken"
+
+    per_page = 6
+    if tab == "created":
+        total_items = created_count
+        total_pages = max(1, (total_items + per_page - 1) // per_page)
+        page = max(1, min(page, total_pages))
+        offset = (page - 1) * per_page
+        quizzes = await get_user_quizzes(user.id, limit=per_page, offset=offset)
+
+        if total_items == 0:
+            text = (
+                "📜 <b>Siz hali birorta ham test tuzmadingiz.</b>\n\n"
+                "«Test tuzish» tugmasi orqali yangi test yarating yoki yuqoridagi <b>«🎯 Ishlaganlarim»</b> bo‘limini oching!"
+            )
         else:
-            await event.answer(text, reply_markup=kb, parse_mode="HTML")
-        return
+            text = (
+                f"📜 <b>Siz tuzgan testlar ro'yxati:</b> (Jami: <b>{total_items} ta</b>)\n"
+                f"📄 <i>Sahifa {page}/{total_pages}</i>\n\n"
+                f"<i>Test kartochkasini ochish, do'stlarga ulashish yoki boshlash uchun tanlang:</i> 👇"
+            )
+    else:
+        total_items = taken_count
+        total_pages = max(1, (total_items + per_page - 1) // per_page)
+        page = max(1, min(page, total_pages))
+        offset = (page - 1) * per_page
+        quizzes = await get_user_taken_quizzes(user.id, limit=per_page, offset=offset)
 
-    text = (
-        "📜 <b>Siz tuzgan testlar ro'yxati:</b>\n\n"
-        "<i>Testni boshlash uchun quyidagilardan birini tanlang:</i> 👇"
+        if total_items == 0:
+            text = (
+                "🎯 <b>Siz hali birorta ham test ishlamadingiz.</b>\n\n"
+                "O'zingiz tuzgan yoki do'stlaringiz ulashgan testlarni ishlab ko'ring — ishlagan har bir testingiz bu yerda saqlanadi va ulashish mumkin bo'ladi!"
+            )
+        else:
+            text = (
+                f"🎯 <b>Siz ishlagan (yechgan) testlar:</b> (Jami: <b>{total_items} ta</b>)\n"
+                f"📄 <i>Sahifa {page}/{total_pages}</i>\n\n"
+                f"<i>Qayta ishlash yoki do'stlarga ulashish uchun testni tanlang:</i> 👇"
+            )
+
+    kb = get_my_quizzes_keyboard(
+        tab=tab,
+        page=page,
+        total_pages=total_pages,
+        quizzes=quizzes,
+        created_count=created_count,
+        taken_count=taken_count,
     )
 
-    rows = []
-    for idx, q in enumerate(quizzes, 1):
-        title = q["title"][:26]
-        count = q["question_count"]
-        tm = q.get("timer_seconds", 0)
-        tm_str = "Cheksiz" if tm == 0 else f"{tm}s"
-        rows.append([
-            InlineKeyboardButton(
-                text=f"{idx}. 🎯 {title} ({count} ta, ⏱ {tm_str})",
-                callback_data=f"qopen:{q['quiz_id']}",
-            )
-        ])
-
-    rows.append([
-        InlineKeyboardButton(text="🎲 Test tuzish", callback_data="menu:create"),
-        InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="menu:home"),
-    ])
-
-    kb = InlineKeyboardMarkup(inline_keyboard=rows)
     if isinstance(event, CallbackQuery) and event.message:
-        await event.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+        try:
+            await event.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+        except Exception:
+            await event.message.answer(text, reply_markup=kb, parse_mode="HTML")
     else:
         await event.answer(text, reply_markup=kb, parse_mode="HTML")
 
@@ -231,17 +321,36 @@ async def handle_open_saved_quiz(callback: CallbackQuery, bot: Bot) -> None:
     quiz_id = callback.data.split(":")[1]
     quiz = await get_quiz(quiz_id)
     if not quiz:
-        await callback.answer("Test topilmadi", show_alert=True)
+        await callback.answer("⚠️ Kechirasiz, ushbu test topilmadi yoki o'chirilgan.", show_alert=True)
         return
 
     await callback.answer()
     bot_info = await bot.get_me()
     bot_username = bot_info.username or "quiz_tuzdimbot"
     card_text = format_quiz_ready_text(quiz, bot_username=bot_username, is_group=False)
+
+    # Agar foydalanuvchi bu testni avval ishlagan bo'lsa, uning natijasini ko'rsatamiz
+    last_att = await get_last_quiz_attempt(quiz_id, callback.from_user.id)
+    if last_att:
+        c_at = last_att.get("correct_count", 0)
+        t_at = last_att.get("total_count", 0)
+        pct = last_att.get("percentage", 0)
+        tm_sec = last_att.get("time_spent_seconds", 0)
+        tm_str = f"{tm_sec // 60} daqiqa {tm_sec % 60} soniya" if tm_sec >= 60 else f"{tm_sec} soniya"
+        card_text += (
+            f"\n\n📊 <b>Sizning oxirgi natijangiz:</b>\n"
+            f"✅ <b>{c_at}/{t_at}</b> ta to'g'ri (<b>{pct}%</b>) · ⏱ <b>{tm_str}</b>"
+        )
+
     if callback.message:
         await callback.message.edit_text(
             text=card_text,
-            reply_markup=get_quiz_card_keyboard(quiz_id, bot_username=bot_username, is_group=False),
+            reply_markup=get_quiz_card_keyboard(
+                quiz_id,
+                bot_username=bot_username,
+                is_group=False,
+                title=quiz.get("title", ""),
+            ),
             parse_mode="HTML",
         )
 

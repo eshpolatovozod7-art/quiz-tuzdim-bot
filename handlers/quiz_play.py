@@ -74,6 +74,7 @@ def format_quiz_ready_text(
     tm = quiz.get("timer_seconds", 15)
     tm_str = f"{tm} soniya" if (tm and tm > 0) else "15 soniya"
     quiz_id = quiz.get("quiz_id", "")
+    share_link = f"https://t.me/{bot_username}?start=quiz_{quiz_id}" if quiz_id else ""
 
     if is_group:
         return (
@@ -85,25 +86,31 @@ def format_quiz_ready_text(
             f"Uni to‘xtatish uchun /stop buyrug‘ini yuboring."
         )
 
+    link_section = f"\n\n🔗 <b>Test havolasi (boshqalarga ulashish uchun):</b>\n<code>{share_link}</code>" if share_link else ""
     return (
         f"🎲 <b>“{title}”</b>\n\n"
         f"🗡 {count} ta savol\n"
         f"⏱ Guruhda: {tm_str} · Shaxsiyda: Cheklovsiz\n"
-        f"🏛 Ovozlar test egasiga ko‘rinadigan bo‘ladi\n\n"
-        f"<i>Testni boshlash, guruhga qo‘shish yoki do‘stlarga ulashish uchun quyidagi tugmalardan foydalaning:</i> 👇"
+        f"🏛 Ovozlar test egasiga ko‘rinadigan bo‘ladi"
+        f"{link_section}\n\n"
+        f"<i>Testni boshlash, do‘stlarga ulashish yoki guruhga qo‘shish uchun quyidagi tugmalardan foydalaning:</i> 👇"
     )
 
 
-def format_quiz_single_ready_text(quiz: dict[str, Any]) -> str:
+def format_quiz_single_ready_text(quiz: dict[str, Any], bot_username: str = "quiz_tuzdimbot") -> str:
     """Yakka tartibda ishlayotganda (vaqt cheklovisiz) tayyorgarlik xabari."""
     title = html.escape(quiz.get("title", "Test"), quote=False)
     questions = quiz.get("questions", [])
     count = quiz.get("question_count", len(questions))
+    quiz_id = quiz.get("quiz_id", "")
+    share_link = f"https://t.me/{bot_username}?start=quiz_{quiz_id}" if quiz_id else ""
+    link_section = f"\n\n🔗 <b>Test havolasi (ulashish uchun):</b>\n<code>{share_link}</code>" if share_link else ""
     return (
         f"🎲 <b>“{title}” testiga tayyorlaning</b>\n\n"
         f"🗡 {count} ta savol\n"
         f"⏱ O‘z sur’atingizda (savol belgilanishi bilan keyingisiga o‘tadi)\n"
-        f"🏛 Ovozlar test egasiga ko‘rinadigan bo‘ladi\n\n"
+        f"🏛 Ovozlar test egasiga ko‘rinadigan bo‘ladi"
+        f"{link_section}\n\n"
         f"🏁 Tayyor bo‘lganingizda quyidagi tugmani bosing.\n"
         f"Uni to‘xtatish uchun /stop buyrug‘ini yuboring."
     )
@@ -817,10 +824,17 @@ async def finish_group_quiz(chat_id: int, quiz: dict[str, Any], bot: Bot, sessio
 async def handle_quiz_card_more(callback: CallbackQuery, bot: Bot) -> None:
     """Test kartochkasidagi qo'shimcha menyuni ochish."""
     quiz_id = callback.data.split(":")[2]
+    quiz = await get_quiz(quiz_id)
+    title = quiz.get("title", "") if quiz else ""
     bot_info = await bot.get_me()
     try:
         await callback.message.edit_reply_markup(
-            reply_markup=get_quiz_card_keyboard(quiz_id, bot_info.username or "quiz_tuzdimbot", full_menu=True)
+            reply_markup=get_quiz_card_keyboard(
+                quiz_id,
+                bot_info.username or "quiz_tuzdimbot",
+                full_menu=True,
+                title=title,
+            )
         )
     except Exception:
         pass
@@ -831,10 +845,17 @@ async def handle_quiz_card_more(callback: CallbackQuery, bot: Bot) -> None:
 async def handle_quiz_card_less(callback: CallbackQuery, bot: Bot) -> None:
     """Test kartochkasidagi qisqa (chalg'itmaydigan) menyuga qaytish."""
     quiz_id = callback.data.split(":")[2]
+    quiz = await get_quiz(quiz_id)
+    title = quiz.get("title", "") if quiz else ""
     bot_info = await bot.get_me()
     try:
         await callback.message.edit_reply_markup(
-            reply_markup=get_quiz_card_keyboard(quiz_id, bot_info.username or "quiz_tuzdimbot", full_menu=False)
+            reply_markup=get_quiz_card_keyboard(
+                quiz_id,
+                bot_info.username or "quiz_tuzdimbot",
+                full_menu=False,
+                title=title,
+            )
         )
     except Exception:
         pass
@@ -1094,24 +1115,31 @@ async def finish_quiz(session_key: int, bot: Bot) -> None:
 
     has_wrong = len(session["wrong_questions"]) > 0
 
+    bot_info = await bot.get_me()
+    bot_username = bot_info.username or "quiz_tuzdimbot"
+    share_link = f"https://t.me/{bot_username}?start=quiz_{quiz_id}"
+
     clean_title = html.escape(title, quote=False)
     result_text = (
         f"🏁 <b>“{clean_title}” testi yakunlandi!</b>\n\n"
-        f"{total} ta savoldan <b>{correct}</b> tasiga to‘g‘ri javob berdingiz: <b>{time_str}</b>\n\n"
-        f"{grade}"
+        f"📊 Natijangiz: {total} ta savoldan <b>{correct}</b> tasiga to‘g‘ri javob berdingiz (<b>{pct}%</b>)\n"
+        f"⏱ Sarflangan vaqt: <b>{time_str}</b>\n\n"
+        f"{grade}\n\n"
+        f"🔗 <b>Ushbu testni boshqalarga ulashish havolasi:</b>\n"
+        f"<code>{share_link}</code>"
     )
 
-    bot_info = await bot.get_me()
     await bot.send_message(
         chat_id=chat_id,
         text=result_text,
         reply_markup=get_quiz_finish_keyboard(
             quiz_id,
-            bot_username=bot_info.username or "quiz_tuzdimbot",
+            bot_username=bot_username,
             has_wrong=has_wrong,
             correct=correct,
             total=total,
             percentage=pct,
+            title=title,
         ),
         parse_mode="HTML",
     )
@@ -1204,7 +1232,12 @@ async def handle_save_new_timer(callback: CallbackQuery, bot: Bot) -> None:
     if callback.message:
         await callback.message.edit_text(
             card_text,
-            reply_markup=get_quiz_card_keyboard(quiz_id, bot_username=bot_username, is_group=False),
+            reply_markup=get_quiz_card_keyboard(
+                quiz_id,
+                bot_username=bot_username,
+                is_group=False,
+                title=quiz.get("title", ""),
+            ),
             parse_mode="HTML",
         )
 
@@ -1223,7 +1256,12 @@ async def handle_cancel_timer_change(callback: CallbackQuery, bot: Bot) -> None:
     if callback.message:
         await callback.message.edit_text(
             card_text,
-            reply_markup=get_quiz_card_keyboard(quiz_id, bot_username=bot_username, is_group=False),
+            reply_markup=get_quiz_card_keyboard(
+                quiz_id,
+                bot_username=bot_username,
+                is_group=False,
+                title=quiz.get("title", ""),
+            ),
             parse_mode="HTML",
         )
     await callback.answer()

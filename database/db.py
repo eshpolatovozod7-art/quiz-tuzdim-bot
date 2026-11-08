@@ -206,21 +206,83 @@ async def get_quiz(quiz_id: str) -> dict[str, Any] | None:
             return data
 
 
-async def get_user_quizzes(user_id: int, limit: int = 10) -> list[dict[str, Any]]:
-    """Foydalanuvchi tuzgan oxirgi testlarni olish."""
+async def get_user_quizzes(user_id: int, limit: int = 10, offset: int = 0) -> list[dict[str, Any]]:
+    """Foydalanuvchi tuzgan testlarni sahifalab olish."""
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT * FROM quizzes WHERE user_id = ? ORDER BY created_at DESC LIMIT ?",
-            (user_id, limit),
+            "SELECT * FROM quizzes WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            (user_id, limit, offset),
         ) as cursor:
             rows = await cursor.fetchall()
             result = []
             for r in rows:
                 item = dict(r)
-                item["questions"] = json.loads(item["questions_json"])
+                try:
+                    item["questions"] = json.loads(item["questions_json"])
+                except Exception:
+                    item["questions"] = []
                 result.append(item)
             return result
+
+
+async def get_user_quizzes_count(user_id: int) -> int:
+    """Foydalanuvchi tuzgan testlar umumiy sonini olish."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM quizzes WHERE user_id = ?",
+            (user_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else 0
+
+
+async def get_user_taken_quizzes_count(user_id: int) -> int:
+    """Foydalanuvchi ishlagan (yechgan) takrorlanmas testlar umumiy sonini olish."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            """
+            SELECT COUNT(DISTINCT qa.quiz_id)
+            FROM quiz_attempts qa
+            JOIN quizzes q ON q.quiz_id = qa.quiz_id
+            WHERE qa.user_id = ?
+            """,
+            (user_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else 0
+
+
+async def get_user_taken_quizzes(user_id: int, limit: int = 10, offset: int = 0) -> list[dict[str, Any]]:
+    """Foydalanuvchi ishlagan (yechgan) testlar ro'yxatini oxirgi natijasi bilan olish."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        sql = """
+        SELECT
+            qa.quiz_id,
+            qa.completed_at,
+            qa.percentage,
+            qa.correct_count,
+            qa.total_count,
+            qa.time_spent_seconds,
+            q.title,
+            q.question_count,
+            q.timer_seconds,
+            q.user_id as author_id
+        FROM (
+            SELECT quiz_id, MAX(completed_at) as last_completed_at
+            FROM quiz_attempts
+            WHERE user_id = ?
+            GROUP BY quiz_id
+        ) latest
+        JOIN quiz_attempts qa ON qa.quiz_id = latest.quiz_id AND qa.completed_at = latest.last_completed_at AND qa.user_id = ?
+        JOIN quizzes q ON q.quiz_id = qa.quiz_id
+        ORDER BY qa.completed_at DESC
+        LIMIT ? OFFSET ?
+        """
+        async with db.execute(sql, (user_id, user_id, limit, offset)) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(r) for r in rows]
 
 
 async def save_attempt(
