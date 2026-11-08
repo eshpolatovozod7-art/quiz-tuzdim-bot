@@ -14,6 +14,22 @@ from config import GEMINI_API_KEY, DEFAULT_MODEL
 logger = logging.getLogger(__name__)
 
 
+def sanitize_question_text(q_text: str) -> str:
+    """Robotik 'Matnga ko'ra', 'Manbaga asosan' kabi prefikslarni tozalash va matnni tekislash."""
+    if not q_text:
+        return ""
+    cleaned = q_text.strip()
+    pattern = (
+        r"^(Matnga ko['‘`]?ra|Manbaga ko['‘`]?ra|Manbaga asosan|Hujjatga ko['‘`]?ra|"
+        r"Berilgan matnga asosan|Matnda aytilishicha|Ushbu matnda|Manba matniga ko['‘`]?ra|"
+        r"According to the text|According to the passage|Based on the text),?\s*"
+    )
+    cleaned = re.sub(pattern, "", cleaned, flags=re.IGNORECASE).strip()
+    if cleaned and cleaned[0].islower():
+        cleaned = cleaned[0].upper() + cleaned[1:]
+    return cleaned
+
+
 def try_repair_and_parse_json(text: str) -> Any:
     """Tugallanmagan yoki kesilib qolgan JSON matnidan xavfsiz holda ma'lumotlarni ajratib olish."""
     if not text:
@@ -176,9 +192,22 @@ PEDAGOGICAL_DEPTH_DIRECTIVE = (
     "4. VARIANTLAR SIMMETRIYASI VA BALANSI:\n"
     "   - Barcha variantlar taxminan bir xil hajmda (uzunlikda), bir xil grammatik tuzilishda va teng darajada ishonarli bo'lsin.\n"
     "   - To'g'ri javob eng uzun, eng chiroyli yoki eng batafsil bo'lib qolmasin (to'g'ri javob tashqi ko'rinishidan fosh bo'lmasin).\n\n"
-    "5. EXPLANATION (IZOH) PEDAGOGIK AHAMIYATGA EGA BO'LSIN:\n"
+    "5. 'MATNGA KO'RA...', 'MANBAGA ASOSAN...' KABI ROBOTIK PREFIKSLAR TAQIQLANADI:\n"
+    "   - Savol matnini 'Matnga ko'ra...', 'Manbaga ko'ra...', 'Hujjatda aytilishicha...', 'Ushbu darslikka asosan...' kabi robotik so'zlar bilan boshlamang!\n"
+    "   - Savol to'g'ridan-to'g'ri tabiiy, ravon va mustaqil imtihon savoli shaklida yozilsin.\n\n"
+    "6. EXPLANATION (IZOH) PEDAGOGIK AHAMIYATGA EGA BO'LSIN:\n"
     "   - Shunchaki 'A javob to'g'ri' deb quruq yozilmasin.\n"
-    "   - Qisqa, lo'nda va ilmiy-ommabop qilib (maksimal 180 belgi) nima uchun aynan shu javob to'g'riligi va qaysi mexanizm ishlashi o'quvchiga o'rgatilsin.\n"
+    "   - Qisqa, lo'nda va ilmiy-ommabop qilib (maksimal 180 belgi) nima uchun aynan shu javob to'g'riligi va qaysi mexanizm ishlashi o'quvchiga o'rgatilsin.\n\n"
+    "NAMUNAVIY TAQQOSLASH (QANDAY TUZISH KERAK VA QANDAY TUZMASLIK KERAK):\n"
+    "❌ TAQIQLANGAN SAYOZ SAVOLLAR:\n"
+    "- 'Alisher Navoiy qachon tug'ilgan?' (Quruq sana)\n"
+    "- 'Nyutonning ikkinchi qonuni formulasi qaysi?' (Quruq formula)\n"
+    "- 'Manbaga ko'ra, fotosintez nima?' (Robotik prefiks va sayozlik)\n\n"
+    "✅ TALAB QILINGAN YUQORI SIFATLI PEDAGOGIK SAVOLLAR:\n"
+    "- 'Massasi 60 kg bo\\'lgan odam lift ichidagi tarozida turibdi. Lift pastga qarab 2 m/s² tezlanish bilan harakatlansa, tarozi ko\\'rsatgichi necha Nyuton bo\\'ladi? (g = 10 m/s²)'\n"
+    "  Variantlar: ['480 N', '600 N', '720 N', '120 N']\n"
+    "- 'Gorizontal tekislikda harakatlanayotgan jismga ta\\'sir etuvchi natijaviy kuch 3 barobar oshirilib, jism massasi 1.5 barobar kamaytirilsa, uning tezlanishi qanday o\\'zgaradi?'\n"
+    "  Variantlar: ['4.5 barobar ortadi', '2 barobar ortadi', '3 barobar kamayadi', 'O\\'zgarmaydi']\n"
     "════════════════════════════════════════════════════════════════════\n\n"
 )
 
@@ -186,25 +215,40 @@ PEDAGOGICAL_DEPTH_DIRECTIVE = (
 ENGLISH_PEDAGOGICAL_MASTER_DIRECTIVE = (
     "\n"
     "════════════════════════════════════════════════════════════════════\n"
-    "🇬🇧 INGLIZ TILI BO'YICHA XALQARO DARAJA (CAMBRIDGE / CEFR / IELTS) CHUQURLIK STANDARTI:\n"
+    "🇬🇧 INGLIZ TILI BO'YICHA XALQARO DARAJA (CAMBRIDGE / CEFR B1-C1 / IELTS) STANDARTI:\n"
     "════════════════════════════════════════════════════════════════════\n"
     "Ingliz tili bo'yicha savollarda SAYOZLIK (boshlang'ich yodlash) QAT'IYAN TAQIQLANADI:\n\n"
     "1. QURUQ TARJIMA VA QURUQ NAZARIYAT ASLO TUZILMASIN:\n"
     "   - 'X so'zining o'zbekcha tarjimasi nima?', 'Y so'zining sinonimi qaysi?' kabi 1 soniyalik quruq tarjima savollari MUTLAQO TAQIQLANADI!\n"
     "   - 'Present Perfect formulasini toping', 'Ushbu gap qaysi zamonda?' kabi quruq nomlash savollari TAQIQLANADI!\n\n"
-    "2. SO'Z BOYLIGI VA IBORALAR FAQAT JONLI KONTEKSTDA (CONTEXTUAL VOCABULARY & COLLOCATIONS):\n"
+    "2. SO'Z BOYLIGI VA IBORALAR FAQAT JONLI KONTEKSTDA (CONTEXTUAL CLOZE & COLLOCATIONS):\n"
     "   - So'zlar, frazeologik birikmalar (phrasal verbs) va iboralar to'liq, mazmunli gap ichida '______' qoldirilib tekshirilsin.\n"
-    "   - Kollokatsiyalar (masalan: 'make an effort', 'pay attention to', 'take into account', 'heavy traffic') va bog'lanuvchi predloglar (e.g. 'interested in', 'prevent from', 'accused of') tabiiy kontekstda berilsin.\n"
+    "   - Kollokatsiyalar (masalan: 'reach a compromise', 'pay attention to', 'take into account', 'heavy traffic') va bog'lanuvchi predloglar (e.g. 'interested in', 'prevent from', 'accused of') tabiiy kontekstda berilsin.\n"
     "   - Gap ichida to'g'ri so'zni tanlashga undovchi mantiqiy kalit (context clue, collocation, preposition) bo'lishi shart.\n\n"
     "3. GRAMMATIKA — AMALIY VA CHUQUR VAZIYATLI GAP TO'LDIRISH (FILL-IN-THE-BLANKS / CLOZE):\n"
     "   - Zamonlar (Tenses), Shart mayli (Conditionals), Majhul nisbat (Passive), O'zlashtirma gap (Reported Speech), Inversiya (Inversion), Modal fe'llar jonli gaplar ichida tekshirilsin.\n"
-    "   - Gapda tekshiriladigan qism o'rniga '______' qoldiring (masalan: 'Even though she ______ in Paris for five years during her college days, she never visited the Louvre.').\n"
+    "   - Gapda tekshiriladigan qism o'rniga '______' qoldiring (masalan: 'Look at how spotless the kitchen is! Sarah ______ it all morning, though she ______ the exact same clean three days ago.').\n"
     "   - Gaplarda vaqt signallari (time markers), kontekstli qarama-qarshiliklar va nozik qoidalar aks etsin.\n\n"
     "4. YUQORI SIFATLI CHALG'ITUVCHILAR (HIGH-QUALITY DISTRACTORS):\n"
     "   - Noto'g'ri variantlar — o'quvchilar eng ko'p adashadigan tipik xatoliklar (common learner pitfalls, confusing word pairs: affect/effect, raise/rise, borrow/lend, o'xshash zamon shakllari) bo'lsin.\n"
     "   - Bir qarashdayoq ko'rinib turadigan, kulgili yoki qoidaga umuman aloqasiz variantlar bo'lmasin.\n\n"
     "5. O'ZBEK TILIDAGI PEDAGOGIK IZOH (EXPLANATION):\n"
-    "   - To'g'ri javob nega to'g'riligi va qaysi qoida yoki kollokatsiya ishlagani hamda boshqa variantlar nima sababdan mos kelmasligi o'zbek tilida lo'nda (maksimal 180 belgi) tushuntirilsin.\n"
+    "   - To'g'ri javob nega to'g'riligi va qaysi qoida yoki kollokatsiya ishlagani hamda boshqa variantlar nima sababdan mos kelmasligi o'zbek tilida lo'nda (maksimal 180 belgi) tushuntirilsin.\n\n"
+    "NAMUNAVIY TAQQOSLASH (INGLIZ TILI UCHUN):\n"
+    "❌ TAQIQLANGAN SAYOZ SAVOLLAR:\n"
+    "- ''Dentist' so\\'zining o\\'zbekcha tarjimasi nima?' (Quruq tarjima TAQIQLANGAN)\n"
+    "- 'I ______ a student. (am/is/are)' (Ibtidoiy 1-sinf darajasi TAQIQLANGAN)\n"
+    "- 'Present Continuous formulasi qaysi?' (Quruq nazariya TAQIQLANGAN)\n\n"
+    "✅ TALAB QILINGAN YUQORI SIFATLI SAVOLLAR:\n"
+    "- 'After suffering from an excruciating toothache all night, Michael immediately visited the ______ to extract the severely infected molar.'\n"
+    "  Variantlar: ['optometrist', 'dentist', 'dermatologist', 'cardiologist']\n"
+    "  Izoh: 'Toothache' (tish og\\'rig\\'i) va 'molar' (oziq tish) konteksti bemor aynan 'dentist' (tish shifokori)ga borganini bildiradi.\n"
+    "- 'By the time the rescue team arrived at the isolated village, the volunteers ______ essential medical supplies to all residents.'\n"
+    "  Variantlar: ['had already distributed', 'have already distributed', 'already distributed', 'were distributing']\n"
+    "  Izoh: 'By the time + Past Simple' tugallangan ish-harakat uchun oldingi o\\'tgan zamon (Past Perfect)ni talab qiladi.\n"
+    "- 'Despite hours of heated debate, neither of the political parties was willing to ______ a compromise on the new reform.'\n"
+    "  Variantlar: ['reach', 'make', 'settle', 'strike']\n"
+    "  Izoh: 'Reach a compromise' (kelishuvga erishish) turg\\'un kollokatsiya hisoblanadi.\n"
     "════════════════════════════════════════════════════════════════════\n\n"
 )
 
@@ -420,10 +464,10 @@ class GeminiService:
             models_to_try = [
                 self.model,
                 "gemini-3.5-flash",
-                "gemini-3.8-flash",
                 "gemini-3.5-flash-lite",
                 "gemini-flash-latest",
                 "gemini-flash-lite-latest",
+                "gemini-3.8-flash",
             ]
             seen = set()
             unique_models = [m for m in models_to_try if m and not (m in seen or seen.add(m))]
@@ -432,14 +476,15 @@ class GeminiService:
                 try:
                     config = types.GenerateContentConfig(
                         system_instruction=(
-                            "Siz dunyo darajasidagi oliy toifali testolog, ta'lim eksperti va pedagog-metodistsiz. "
-                            "Sizning asosiy vazifangiz — o'quvchini chuqur fikrlashga, tahlil qilishga va qoidalarni amalda qo'llashga undaydigan "
-                            "professional, mantiqiy va sifatli test savollarini tuzish. Sayoz, ibtidoiy yodlash savollaridan mutlaqo saqlaning. "
+                            "Siz dunyo darajasidagi oliy toifali akademik testolog va pedagog-metodistsiz. "
+                            "Sizning vazifangiz — o'quvchini chuqur fikrlashga, sabab-oqibatni tahlil qilishga va qoidalarni amalda qo'llashga undaydigan "
+                            "Cambridge / CEFR va xalqaro olimpiada standartidagi professional test savollarini tuzish. "
+                            "Sayoz, ibtidoiy yodlash, 1 soniyalik faktlar, robotik iboralar ('Matnga ko'ra...') va quruq tarjimalardan MUTLAQO saqlaning. "
                             f"Sizdan so'ralgan roppa-rosa {count} ta savolni to'liq shakllantiring. "
                             f"JSON arrayida aynan {count} ta obyekt bo'lsin."
                         ),
                         response_mime_type="application/json",
-                        temperature=0.6,
+                        temperature=0.35,
                         max_output_tokens=max(4096, count * 450),
                     )
                     res = await self.client.aio.models.generate_content(
@@ -475,8 +520,18 @@ class GeminiService:
                     for idx, item in enumerate(parsed):
                         if not isinstance(item, dict):
                             continue
-                        q_text = str(item.get("question", "")).strip()
-                        opts = [str(o).strip()[:98] for o in item.get("options", []) if str(o).strip()]
+                        raw_q = str(item.get("question", "")).strip()
+                        q_text = sanitize_question_text(raw_q)
+                        raw_opts = item.get("options", [])
+                        if not isinstance(raw_opts, list):
+                            continue
+                        opts = []
+                        seen_o = set()
+                        for o in raw_opts:
+                            o_str = str(o).strip()[:98]
+                            if o_str and o_str.lower() not in seen_o:
+                                seen_o.add(o_str.lower())
+                                opts.append(o_str)
                         c_id = item.get("correct_id", 0)
                         expl = str(item.get("explanation", "")).strip()
 
@@ -697,8 +752,18 @@ class GeminiService:
                 for q in raw_questions:
                     if not isinstance(q, dict):
                         continue
-                    q_text = str(q.get("question", "")).strip()
-                    opts = [str(o).strip()[:98] for o in q.get("options", []) if str(o).strip()]
+                    raw_q = str(q.get("question", "")).strip()
+                    q_text = sanitize_question_text(raw_q)
+                    raw_opts = q.get("options", [])
+                    if not isinstance(raw_opts, list):
+                        continue
+                    opts = []
+                    seen_o = set()
+                    for o in raw_opts:
+                        o_str = str(o).strip()[:98]
+                        if o_str and o_str.lower() not in seen_o:
+                            seen_o.add(o_str.lower())
+                            opts.append(o_str)
                     c_id = q.get("correct_id", 0)
                     expl = str(q.get("explanation", "")).strip()
 
@@ -731,10 +796,10 @@ class GeminiService:
         models_to_try = [
             self.model,
             "gemini-3.5-flash",
-            "gemini-3.8-flash",
             "gemini-3.5-flash-lite",
             "gemini-flash-latest",
             "gemini-flash-lite-latest",
+            "gemini-3.8-flash",
         ]
         seen = set()
         unique_models = [m for m in models_to_try if m and not (m in seen or seen.add(m))]
@@ -788,12 +853,13 @@ class GeminiService:
                         try:
                             cfg = types.GenerateContentConfig(
                                 system_instruction=(
-                                    "Siz oliy toifali pedagog-testolog va metodistsiz. "
-                                    "O'quvchini chuqur fikrlashga, tahlilga va qoidalarni amalda qo'llashga undaydigan "
-                                    "professional va sifatli test savollarini JSON ro'yxatida tuzib bering. Sayoz savollardan saqlaning."
+                                    "Siz dunyo darajasidagi oliy toifali akademik testolog va pedagog-metodistsiz. "
+                                    "O'quvchini chuqur fikrlashga, sabab-oqibatni tahlil qilishga va qoidalarni amalda qo'llashga undaydigan "
+                                    "professional va xalqaro standartdagi test savollarini JSON ro'yxatida tuzib bering. "
+                                    "Sayoz, 1 soniyalik yodlash savollari, robotik iboralar ('Matnga ko'ra...') va quruq tarjimalardan MUTLAQO saqlaning."
                                 ),
                                 response_mime_type="application/json",
-                                temperature=0.6,
+                                temperature=0.35,
                                 max_output_tokens=8192,
                             )
                             r = await self.client.aio.models.generate_content(
@@ -860,12 +926,13 @@ class GeminiService:
             try:
                 config = types.GenerateContentConfig(
                     system_instruction=(
-                        "Siz dunyo darajasidagi oliy toifali pedagog-testolog va metodistsiz. "
-                        "Hujjatdagi barcha dars/mavzularni aniqlab, o'quvchini chuqur fikrlashga va tahlilga undaydigan "
-                        "professional testlar to'plamini JSON ro'yxatida to'liq tuzib bering. Sayoz savollardan mutlaqo saqlaning."
+                        "Siz dunyo darajasidagi oliy toifali akademik testolog va metodistsiz. "
+                        "Hujjatdagi barcha dars/mavzularni aniqlab, o'quvchini chuqur fikrlashga, tahlilga va qoidalarni amalda qo'llashga undaydigan "
+                        "professional testlar to'plamini JSON ro'yxatida to'liq tuzib bering. "
+                        "Sayoz savollar, robotik iboralar ('Matnga ko'ra...') va quruq tarjimalardan mutlaqo saqlaning."
                     ),
                     response_mime_type="application/json",
-                    temperature=0.6,
+                    temperature=0.35,
                     max_output_tokens=16384,
                 )
                 res = await self.client.aio.models.generate_content(
