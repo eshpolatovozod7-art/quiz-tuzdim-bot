@@ -253,6 +253,36 @@ ENGLISH_PEDAGOGICAL_MASTER_DIRECTIVE = (
 )
 
 
+MASTER_TEACHER_METHODOLOGY_DIRECTIVE = (
+    "\n"
+    "════════════════════════════════════════════════════════════════════\n"
+    "👨‍🏫 TAJRIBALI USTOZ-METODIST NIGOHI BILAN TEST TUZISH STANDARTI:\n"
+    "════════════════════════════════════════════════════════════════════\n"
+    "Siz shunchaki sun'iy intellekt emassiz — siz 20 yillik pedagogik tajribaga ega,\n"
+    "o'quvchilarning psixologiyasi, darsdagi odatiy xatolari va nozik 'ilmoqlari'ni\n"
+    "besh qo'lday biladigan OLIY TOIFALI USTOZ-METODIST VA REPETITORSIZ!\n\n"
+    "Haqiqiy ustoz har bir savolni tuzishda quyidagi 4 ta ustozona tamoyil asosida o'ylaydi:\n\n"
+    "1. 🎯 DIAGNOSTIK VA ILMOQLI SAVOL (O'quvchi bu mavzuda qayerda adashadi?):\n"
+    "   - Ustoz har bir savolni boshlashdan oldin o'ziga savol beradi:\n"
+    "     'O'quvchilarim ushbu qoidani o'rganganda eng ko'p qaysi nozik joyda adashadi? Qaysi istisno yoki shart ularni chalg'itadi?'\n"
+    "   - Savol o'quvchining shunchaki quruq yodlaganini emas, mavzuning mohiyatini va 'ilmoqli' joylarini tushunganini tekshirsin.\n\n"
+    "2. 🧩 CHALG'ITUVCHILAR — TALABANING REAL XATOLARI (Har bir variant ma'noga ega):\n"
+    "   - Noto'g'ri variantlar tasodifiy o'ylab topilmaydi! Har bir variant talabaning muayyan xato fikrlashini aks ettirsin:\n"
+    "     * To'g'ri javob: Qoidani chuqur tushungan o'quvchi tanlaydi.\n"
+    "     * 1-tuzoq: Qoidaning birinchi yarmini bilib, ikkinchi nozik shartini unutgan o'quvchi varianti.\n"
+    "     * 2-tuzoq: O'xshash qoida, shakl yoki zamon bilan chalkashtirgan o'quvchi varianti.\n"
+    "     * 3-tuzoq: Shoshilib, kontekstni to'liq o'qimay yuzaki qaragan o'quvchi varianti.\n\n"
+    "3. 💡 USTOZONA VA O'RGATUVCHI IZOH (Explanation):\n"
+    "   - Haqiqiy ustoz hech qachon 'A javob to'g'ri' deb quruq yozmaydi!\n"
+    "   - Izohni xuddi o'quvchining yonida turib, uning xatosini mehr bilan tuzatayotgan ustozdek yozing:\n"
+    "     '💡 Ustoz maslahati: Ko\\'pchilik bu yerda [X] deb adashadi, lekin [nozik shart] tufayli [Y] to\\'g\\'ri bo\\'ladi. Qoida: ...'\n"
+    "   - Izoh maksimal 180 belgi (Telegram poll chegarasi) ichida ixcham, lekin o'quvchiga 'Aha!' dedirtiradigan bilim bersin.\n\n"
+    "4. ⚖️ DIDAKTIK XILMA-XILLIK (Hamma savol bir xil qolipda bo'lmasin):\n"
+    "   - Savollarning biri vaziyatli keys, biri sabab-oqibat, biri qoidadagi istisno/ilmoq, biri ikki tushunchani taqqoslash bo'lsin.\n"
+    "════════════════════════════════════════════════════════════════════\n\n"
+)
+
+
 class GeminiService:
     def __init__(self, api_key: str | None = None, model: str | None = None):
         self.api_key = api_key or GEMINI_API_KEY
@@ -376,8 +406,9 @@ class GeminiService:
             )
 
         prompt = (
-            f"Siz professional testolog, pedagog va metodistsiz.\n"
-            f"Quyida berilgan manba asosida ROPPA-ROSA {count} TA sifatli, mantiqan to'g'ri va qiziqarli test (viktorina) savollarini tuzing.\n\n"
+            f"Siz 20 yillik tajribaga ega oliy toifali ustoz-metodist, akademik repetitor va pedagog-testologsiz.\n"
+            f"Xuddi tajribali ustoz o'quvchilarining bilimini sinovdan o'tkazayotgandek, "
+            f"quyida berilgan manba asosida ROPPA-ROSA {count} TA sifatli, mantiqan to'g'ri, ilmoqli va o'rgatuvchi test savollarini tuzing.\n\n"
             f"DIQQAT (SAVOLLAR SONI BO'YICHA QAT'IY TALAB):\n"
             f"Siz ROPPA-ROSA {count} TA savol tuzishingiz SHART! Kam ham bo'lmasin, ko'p ham bo'lmasin, aynan {count} ta bo'lsin.\n"
             f"JSON massivida aynan {count} ta savol obyekti bo'lishi shart (len(array) == {count}).\n\n"
@@ -388,9 +419,12 @@ class GeminiService:
             f"1. Savol matni: Aniq, lo'nda va tushunarli bo'lsin (maksimal 280 belgi).\n"
             f"2. Variantlar: Aynan {options_count} ta variant bo'lsin. Har bir variant maksimal 95 belgi.\n"
             f"3. To'g'ri javob: Faqat bitta variant to'g'ri bo'lsin va 'correct_id' 0 dan {options_count - 1} gacha bo'lgan to'g'ri indeksni ko'rsatsin.\n"
-            f"4. explanation (Izoh): To'g'ri javob nima uchun to'g'riligini va asosiy qoidani qisqa tushuntirib bering (maksimal 180 belgi).\n"
+            f"4. explanation (Izoh): Xuddi tajribali ustoz o'quvchining xatosini mehr bilan tuzatayotgandek yozilsin! "
+            f"Nega aynan shu javob to'g'riligi, qaysi nozik qoida ishlagani va o'quvchilar ko'p tushadigan tuzoq lo'nda (maksimal 180 belgi) tushuntirilsin "
+            f"(Masalan: '💡 Ustoz maslahati: ...' yoki '💡 Eslab qoling: ...').\n"
             f"5. BUTUN HUJJATNI QAMRAB OLING: Savollarni faqat hujjat boshidan emas, butun matn bo'ylab (boshi, o'rtasi, oxiri, turli darslar) aralash holda tanlang.\n"
             f"6. Til qoidasi: Agar mavzu xorijiy til (ingliz tili, rus tili va h.k.) o'rganishga oid bo'lsa, test savollari va variantlari o'sha o'rganilayotgan tilda (yoki grammatika/lug'at topshirig'i shaklida), izohi (explanation) esa o'zbek tilida tushuntirilsin. Boshqa fanlar uchun savollar to'liq o'zbek tilida bo'lsin.\n"
+            f"{MASTER_TEACHER_METHODOLOGY_DIRECTIVE}"
             f"{PEDAGOGICAL_DEPTH_DIRECTIVE}"
             f"{english_directive_clause}"
             f"{grammar_formula_clause}"
@@ -402,7 +436,7 @@ class GeminiService:
             '    "question": "Savol matni?",\n'
             f'    "options": {sample_opts_json},\n'
             '    "correct_id": 0,\n'
-            '    "explanation": "Qisqa tushuntirish"\n'
+            '    "explanation": "💡 Ustoz maslahati: ..."\n'
             "  }\n"
             "]"
             f"{avoid_clause}\n\n"
@@ -476,10 +510,11 @@ class GeminiService:
                 try:
                     config = types.GenerateContentConfig(
                         system_instruction=(
-                            "Siz dunyo darajasidagi oliy toifali akademik testolog va pedagog-metodistsiz. "
-                            "Sizning vazifangiz — o'quvchini chuqur fikrlashga, sabab-oqibatni tahlil qilishga va qoidalarni amalda qo'llashga undaydigan "
-                            "Cambridge / CEFR va xalqaro olimpiada standartidagi professional test savollarini tuzish. "
-                            "Sayoz, ibtidoiy yodlash, 1 soniyalik faktlar, robotik iboralar ('Matnga ko'ra...') va quruq tarjimalardan MUTLAQO saqlaning. "
+                            "Siz 20 yillik tajribaga ega oliy toifali ustoz-metodist, akademik repetitor va pedagog-testologsiz. "
+                            "Siz test tuzishda xuddi tajribali ustozlarday o'ylaysiz: o'quvchilar eng ko'p qayerda adashishini, qaysi ilmoq va nozik qoidalarda "
+                            "qoqilishini oldindan bilgan holda, chuqur fikrlashga, sabab-oqibatni tahlil qilishga va qoidalarni amalda qo'llashga undaydigan "
+                            "Cambridge / CEFR va xalqaro olimpiada standartidagi professional test savollarini tuzasiz. "
+                            "Sayoz yodlash, 1 soniyalik quruq faktlar, robotik iboralar ('Matnga ko'ra...') va quruq tarjimalardan MUTLAQO saqlaning. "
                             f"Sizdan so'ralgan roppa-rosa {count} ta savolni to'liq shakllantiring. "
                             f"JSON arrayida aynan {count} ta obyekt bo'lsin."
                         ),
@@ -818,8 +853,9 @@ class GeminiService:
 
             async def process_chunk(chunk_topics: list[str]) -> list[dict[str, Any]]:
                 chunk_prompt = (
-                    "Siz professional pedagog-testologsiz.\n"
-                    f"Quyida ko'rsatilgan darslar/mavzularning HAR BIRI uchun alohida roppa-rosa {questions_per_topic} tadan sifatli test savollarini tuzing.\n\n"
+                    "Siz 20 yillik tajribaga ega oliy toifali ustoz-metodist va akademik repetitorsiz.\n"
+                    "Xuddi tajribali ustoz darsda o'quvchilarining bilimini sinayotgandek, "
+                    f"quyida ko'rsatilgan darslar/mavzularning HAR BIRI uchun alohida roppa-rosa {questions_per_topic} tadan sifatli, ilmoqli va o'rgatuvchi test savollarini tuzing.\n\n"
                     f"KO'RSATILGAN MAVZULAR RO'YXATI:\n{json.dumps(chunk_topics, ensure_ascii=False, indent=2)}\n\n"
                     f"PARAMETRLAR:\n"
                     f"- Har bir mavzudagi savollar soni: {questions_per_topic} ta\n"
@@ -828,6 +864,7 @@ class GeminiService:
                     "TALABLAR:\n"
                     "1. Ro'yxatdagi har bir mavzuni o'z ichiga olgan alohida obyekt tuzing.\n"
                     "2. 'topic_title' aynan o'sha mavzu nomi bo'lsin.\n"
+                    f"{MASTER_TEACHER_METHODOLOGY_DIRECTIVE}"
                     f"{PEDAGOGICAL_DEPTH_DIRECTIVE}"
                     f"{english_batch_clause}"
                     f"{grammar_batch_clause}"
@@ -840,7 +877,7 @@ class GeminiService:
                     '        "question": "Savol matni?",\n'
                     '        "options": ["Variant 1", "Variant 2", "Variant 3", "Variant 4"],\n'
                     '        "correct_id": 0,\n'
-                    '        "explanation": "Qisqa izoh"\n'
+                    '        "explanation": "💡 Ustoz maslahati: ..."\n'
                     "      }\n"
                     "    ]\n"
                     "  }\n"
@@ -853,8 +890,8 @@ class GeminiService:
                         try:
                             cfg = types.GenerateContentConfig(
                                 system_instruction=(
-                                    "Siz dunyo darajasidagi oliy toifali akademik testolog va pedagog-metodistsiz. "
-                                    "O'quvchini chuqur fikrlashga, sabab-oqibatni tahlil qilishga va qoidalarni amalda qo'llashga undaydigan "
+                                    "Siz 20 yillik tajribaga ega oliy toifali ustoz-metodist va pedagog-repetitorsiz. "
+                                    "Xuddi tajribali ustozlarday o'ylab, o'quvchini chuqur fikrlashga, sabab-oqibatni tahlil qilishga va qoidalarni amalda qo'llashga undaydigan "
                                     "professional va xalqaro standartdagi test savollarini JSON ro'yxatida tuzib bering. "
                                     "Sayoz, 1 soniyalik yodlash savollari, robotik iboralar ('Matnga ko'ra...') va quruq tarjimalardan MUTLAQO saqlaning."
                                 ),
@@ -890,9 +927,9 @@ class GeminiService:
 
         # 2-BOSQICH (Zaxira): Agar bo'laklash imkoni bo'lmasa, to'g'ridan-to'g'ri bitta so'rov bilan tuzish
         single_prompt = (
-            "Siz professional pedagog-testolog va metodistsiz.\n"
-            "Quyida berilgan hujjat (darslik, konspekt yoki lug'at)da bir nechta darslar, unitlar yoki mavzular mavjud.\n"
-            f"Vazifangiz: Hujjatdagi HAR BIR dars/mavzu/unitni aniqlab, har biri uchun alohida roppa-rosa {questions_per_topic} tadan sifatli test savollarini tuzing.\n\n"
+            "Siz 20 yillik tajribaga ega oliy toifali ustoz-metodist va akademik repetitorsiz.\n"
+            "Xuddi tajribali ustozlarday o'ylab, hujjatdagi HAR BIR dars/mavzu/unit uchun alohida "
+            f"roppa-rosa {questions_per_topic} tadan sifatli, ilmoqli va o'rgatuvchi test savollarini tuzing.\n\n"
             f"PARAMETRLAR:\n"
             f"- Har bir mavzudagi savollar soni: {questions_per_topic} ta\n"
             f"- Variantlar soni: {options_count} ta\n"
@@ -902,6 +939,7 @@ class GeminiService:
             "2. 'topic_title' maydonida mavzuning aniq nomi bo'lsin.\n"
             "3. Savollar va variantlar o'sha mavzuning lug'ati va faktlariga mos bo'lsin.\n"
             "4. Har bir savolda 'question', 'options', 'correct_id' (0 dan boshlanadi), va 'explanation' bo'lsin.\n"
+            f"{MASTER_TEACHER_METHODOLOGY_DIRECTIVE}"
             f"{PEDAGOGICAL_DEPTH_DIRECTIVE}"
             f"{english_batch_clause}"
             f"{grammar_batch_clause}"
@@ -914,7 +952,7 @@ class GeminiService:
             '        "question": "Savol matni?",\n'
             '        "options": ["Variant 1", "Variant 2", "Variant 3", "Variant 4"],\n'
             '        "correct_id": 0,\n'
-            '        "explanation": "Qisqa izoh"\n'
+            '        "explanation": "💡 Ustoz maslahati: ..."\n'
             "      }\n"
             "    ]\n"
             "  }\n"
@@ -926,8 +964,8 @@ class GeminiService:
             try:
                 config = types.GenerateContentConfig(
                     system_instruction=(
-                        "Siz dunyo darajasidagi oliy toifali akademik testolog va metodistsiz. "
-                        "Hujjatdagi barcha dars/mavzularni aniqlab, o'quvchini chuqur fikrlashga, tahlilga va qoidalarni amalda qo'llashga undaydigan "
+                        "Siz 20 yillik tajribaga ega oliy toifali ustoz-metodist va akademik repetitorsiz. "
+                        "Hujjatdagi barcha dars/mavzularni aniqlab, xuddi tajribali ustozlarday o'ylab, o'quvchini chuqur fikrlashga, tahlilga va qoidalarni amalda qo'llashga undaydigan "
                         "professional testlar to'plamini JSON ro'yxatida to'liq tuzib bering. "
                         "Sayoz savollar, robotik iboralar ('Matnga ko'ra...') va quruq tarjimalardan mutlaqo saqlaning."
                     ),
