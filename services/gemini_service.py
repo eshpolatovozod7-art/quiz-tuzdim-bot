@@ -110,6 +110,32 @@ def is_english_grammar_or_formula_content(
     return False
 
 
+PEDAGOGICAL_DEPTH_DIRECTIVE = (
+    "\n"
+    "════════════════════════════════════════════════════════════════════\n"
+    "🧠 TEST SIFATI VA CHUQURLIGI BO'YICHA QAT'IY TALABLAR (SAYOZLIKNI TAQIQLASH):\n"
+    "════════════════════════════════════════════════════════════════════\n"
+    "1. SAYOZ, IBTIDOIY VA BIRLAMCHI YODLASH SAVOLLARI QAT'IYAN TAQIQLANADI:\n"
+    "   - 'X nima deb ataladi?', 'Qachon sodir bo'lgan?', 'Kim kashf qilgan?', 'Atamaning nomi nima?', 'Formulasi nima?' kabi 1 soniyada yoddan aytiladigan, hech qanday fikrlash talab qilmaydigan quruq ensiklopedik savollar ASLO TUZILMASIN!\n"
+    "   - Savollar Blum taksonomiyasining yuqori pog'onalari (Qo'llash, Tahlil, Mantiqiy xulosa chiqarish, Taqqoslash)ga asoslansin.\n\n"
+    "2. AMALIY VAZIYATLAR (KEYSLAR), TAHLIL VA SABAB-OQIBAT ZANJIRI:\n"
+    "   - Savol real hayotiy misol, ilmiy tajriba/eksperiment natijasi, masalali keys yoki amaliy vaziyat shaklida bo'lsin.\n"
+    "   - O'quvchi shunchaki eslash orqali emas, qoidani o'sha vaziyatga tadbiq etib, sabab-oqibatni tahlil qilib javob topsin.\n"
+    "   - 'Agar parametr o'zgarsa jarayon qanday kechadi?', 'Nima sababdan bunday hodisa yuz beradi?', 'Qaysi holatda ushbu qoida istisno bo'ladi?' kabi sababiy mexanizmlarni so'rang.\n\n"
+    "3. CHALG'ITUVCHI VARIANTLAR SIFATI (HIGH-QUALITY DISTRACTORS):\n"
+    "   - Noto'g'ri variantlar mutlaqo bema'ni, kulgili yoki bir qarashdayoq ko'rinib turgan oson variantlar bo'lmasin!\n"
+    "   - Noto'g'ri variantlar — o'quvchilar eng ko'p yo'l qo'yadigan tipik xatoliklar (common misconceptions), qoidadagi nozik shartni hisobga olmaslik oqibati yoki o'xshash tushunchalarning chalkashliklari bo'lsin.\n"
+    "   - O'quvchi diqqat bilan o'ylamasdan, shunchaki tavakkal qilib to'g'ri javobni topa olmasin.\n\n"
+    "4. VARIANTLAR SIMMETRIYASI VA BALANSI:\n"
+    "   - Barcha variantlar taxminan bir xil hajmda (uzunlikda), bir xil grammatik tuzilishda va teng darajada ishonarli bo'lsin.\n"
+    "   - To'g'ri javob eng uzun, eng chiroyli yoki eng batafsil bo'lib qolmasin (to'g'ri javob tashqi ko'rinishidan fosh bo'lmasin).\n\n"
+    "5. EXPLANATION (IZOH) PEDAGOGIK AHAMIYATGA EGA BO'LSIN:\n"
+    "   - Shunchaki 'A javob to'g'ri' deb quruq yozilmasin.\n"
+    "   - Qisqa, lo'nda va ilmiy-ommabop qilib (maksimal 180 belgi) nima uchun aynan shu javob to'g'riligi va qaysi mexanizm ishlashi o'quvchiga o'rgatilsin.\n"
+    "════════════════════════════════════════════════════════════════════\n\n"
+)
+
+
 class GeminiService:
     def __init__(self, api_key: str | None = None, model: str | None = None):
         self.api_key = api_key or GEMINI_API_KEY
@@ -239,6 +265,7 @@ class GeminiService:
             f"4. explanation (Izoh): To'g'ri javob nima uchun to'g'riligini va asosiy qoidani qisqa tushuntirib bering (maksimal 180 belgi).\n"
             f"5. BUTUN HUJJATNI QAMRAB OLING: Savollarni faqat hujjat boshidan emas, butun matn bo'ylab (boshi, o'rtasi, oxiri, turli darslar) aralash holda tanlang.\n"
             f"6. Til qoidasi: Agar mavzu xorijiy til (ingliz tili, rus tili va h.k.) o'rganishga oid bo'lsa, test savollari va variantlari o'sha o'rganilayotgan tilda (yoki grammatika/lug'at topshirig'i shaklida), izohi (explanation) esa o'zbek tilida tushuntirilsin. Boshqa fanlar uchun savollar to'liq o'zbek tilida bo'lsin.\n"
+            f"{PEDAGOGICAL_DEPTH_DIRECTIVE}"
             f"{grammar_formula_clause}"
             f"{listening_clause}"
             f"7. Javobingiz FAQAT aynan {count} ta elementdan iborat JSON array formatida bo'lsin:\n"
@@ -309,12 +336,11 @@ class GeminiService:
 
             models_to_try = [
                 self.model,
-                "gemini-flash-lite-latest",
-                "gemini-3.5-flash-lite",
-                "gemini-3.1-flash-lite",
                 "gemini-3.5-flash",
                 "gemini-3.8-flash",
+                "gemini-3.5-flash-lite",
                 "gemini-flash-latest",
+                "gemini-flash-lite-latest",
             ]
             seen = set()
             unique_models = [m for m in models_to_try if m and not (m in seen or seen.add(m))]
@@ -323,12 +349,14 @@ class GeminiService:
                 try:
                     config = types.GenerateContentConfig(
                         system_instruction=(
-                            f"Siz bilimli, xolis va tajribali pedagog-testologsiz. "
+                            "Siz dunyo darajasidagi oliy toifali testolog, ta'lim eksperti va pedagog-metodistsiz. "
+                            "Sizning asosiy vazifangiz — o'quvchini chuqur fikrlashga, tahlil qilishga va qoidalarni amalda qo'llashga undaydigan "
+                            "professional, mantiqiy va sifatli test savollarini tuzish. Sayoz, ibtidoiy yodlash savollaridan mutlaqo saqlaning. "
                             f"Sizdan so'ralgan roppa-rosa {count} ta savolni to'liq shakllantiring. "
                             f"JSON arrayida aynan {count} ta obyekt bo'lsin."
                         ),
                         response_mime_type="application/json",
-                        temperature=0.7,
+                        temperature=0.6,
                         max_output_tokens=max(4096, count * 450),
                     )
                     res = await self.client.aio.models.generate_content(
@@ -614,12 +642,11 @@ class GeminiService:
 
         models_to_try = [
             self.model,
-            "gemini-flash-lite-latest",
-            "gemini-3.5-flash-lite",
-            "gemini-3.1-flash-lite",
             "gemini-3.5-flash",
             "gemini-3.8-flash",
+            "gemini-3.5-flash-lite",
             "gemini-flash-latest",
+            "gemini-flash-lite-latest",
         ]
         seen = set()
         unique_models = [m for m in models_to_try if m and not (m in seen or seen.add(m))]
@@ -648,6 +675,7 @@ class GeminiService:
                     "TALABLAR:\n"
                     "1. Ro'yxatdagi har bir mavzuni o'z ichiga olgan alohida obyekt tuzing.\n"
                     "2. 'topic_title' aynan o'sha mavzu nomi bo'lsin.\n"
+                    f"{PEDAGOGICAL_DEPTH_DIRECTIVE}"
                     f"{grammar_batch_clause}"
                     "3. Javobingiz FAQAT JSON ro'yxati formatida bo'lsin:\n"
                     "[\n"
@@ -670,9 +698,13 @@ class GeminiService:
                     for m_name in unique_models:
                         try:
                             cfg = types.GenerateContentConfig(
-                                system_instruction="Ko'rsatilgan har bir mavzu uchun alohida sifatli test savollarini JSON ro'yxatida tuzib bering.",
+                                system_instruction=(
+                                    "Siz oliy toifali pedagog-testolog va metodistsiz. "
+                                    "O'quvchini chuqur fikrlashga, tahlilga va qoidalarni amalda qo'llashga undaydigan "
+                                    "professional va sifatli test savollarini JSON ro'yxatida tuzib bering. Sayoz savollardan saqlaning."
+                                ),
                                 response_mime_type="application/json",
-                                temperature=0.7,
+                                temperature=0.6,
                                 max_output_tokens=8192,
                             )
                             r = await self.client.aio.models.generate_content(
@@ -715,6 +747,7 @@ class GeminiService:
             "2. 'topic_title' maydonida mavzuning aniq nomi bo'lsin.\n"
             "3. Savollar va variantlar o'sha mavzuning lug'ati va faktlariga mos bo'lsin.\n"
             "4. Har bir savolda 'question', 'options', 'correct_id' (0 dan boshlanadi), va 'explanation' bo'lsin.\n"
+            f"{PEDAGOGICAL_DEPTH_DIRECTIVE}"
             f"{grammar_batch_clause}"
             "5. Javobingiz FAQAT quyidagi JSON ro'yxati formatida bo'lsin:\n"
             "[\n"
@@ -736,9 +769,13 @@ class GeminiService:
         for model_name in unique_models:
             try:
                 config = types.GenerateContentConfig(
-                    system_instruction="Siz tajribali pedagog-testologsiz. Hujjatdagi barcha dars/mavzularni aniqlab, har biriga alohida testlar to'plamini JSON ro'yxatida to'liq tuzib bering.",
+                    system_instruction=(
+                        "Siz dunyo darajasidagi oliy toifali pedagog-testolog va metodistsiz. "
+                        "Hujjatdagi barcha dars/mavzularni aniqlab, o'quvchini chuqur fikrlashga va tahlilga undaydigan "
+                        "professional testlar to'plamini JSON ro'yxatida to'liq tuzib bering. Sayoz savollardan mutlaqo saqlaning."
+                    ),
                     response_mime_type="application/json",
-                    temperature=0.7,
+                    temperature=0.6,
                     max_output_tokens=16384,
                 )
                 res = await self.client.aio.models.generate_content(
