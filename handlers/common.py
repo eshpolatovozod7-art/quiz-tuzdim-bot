@@ -19,6 +19,7 @@ from database.db import (
     get_user_batches,
     get_user_batch_quizzes,
     get_user_batch_quizzes_count,
+    delete_quiz,
 )
 from keyboards.inline_keyboards import (
     get_main_menu_keyboard,
@@ -27,6 +28,7 @@ from keyboards.inline_keyboards import (
     get_my_quizzes_keyboard,
     get_my_quizzes_categories_keyboard,
     get_batch_quizzes_keyboard,
+    get_delete_quiz_confirmation_keyboard,
 )
 from handlers.quiz_play import send_quiz_polls_to_chat, send_group_quiz_lobby, format_quiz_ready_text, format_quiz_single_ready_text
 
@@ -444,6 +446,47 @@ async def handle_open_saved_quiz(callback: CallbackQuery, bot: Bot) -> None:
             ),
             parse_mode="HTML",
         )
+
+
+@router.callback_query(F.data.startswith("qdel:ask:"))
+async def handle_delete_quiz_ask(callback: CallbackQuery) -> None:
+    """Testni o'chirishdan oldin tasdiqlash so'rovi oynasi."""
+    quiz_id = callback.data.split(":")[2]
+    quiz = await get_quiz(quiz_id)
+    if not quiz:
+        await callback.answer("⚠️ Test topilmadi", show_alert=True)
+        return
+
+    # Faqat test egasi o'chira oladi
+    if quiz.get("user_id") != callback.from_user.id:
+        await callback.answer("⚠️ Faqat o'zingiz tuzgan testni o'chira olasiz!", show_alert=True)
+        return
+
+    await callback.answer()
+    title = html.escape(quiz.get("title", "Test"), quote=False)
+    text = (
+        f"🗑 <b>“{title}” testini butunlay o'chirmoqchimisiz?</b>\n\n"
+        f"⚠️ Ushbu test bazadan o'chiriladi va bu amalni ortga qaytarib bo'lmaydi.\n\n"
+        f"<i>Haqiqatan ham test o'chirilsinmi?</i>"
+    )
+    kb = get_delete_quiz_confirmation_keyboard(quiz_id)
+    if callback.message:
+        await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+
+
+@router.callback_query(F.data.startswith("qdel:confirm:"))
+async def handle_delete_quiz_confirm(callback: CallbackQuery, bot: Bot) -> None:
+    """Testni o'chirishni tasdiqlash va o'chirish."""
+    quiz_id = callback.data.split(":")[2]
+    user_id = callback.from_user.id
+    success = await delete_quiz(quiz_id, user_id)
+    if success:
+        await callback.answer("Test muvaffaqiyatli o'chirildi! 🗑", show_alert=True)
+    else:
+        await callback.answer("⚠️ Testni o'chirishda xatolik yuz berdi.", show_alert=True)
+
+    # To'plamlar / Mening testlarim menyusiga qaytarish
+    await handle_history(callback, bot)
 
 
 @router.message(Command("poll", "quiz"))

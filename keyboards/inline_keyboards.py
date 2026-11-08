@@ -447,6 +447,12 @@ def get_quiz_card_keyboard(
                 callback_data=f"qexp:docx:{quiz_id}",
             ),
         ],
+        [
+            InlineKeyboardButton(
+                text="🗑 Testni o'chirish",
+                callback_data=f"qdel:ask:{quiz_id}",
+            ),
+        ],
     ]
     if has_media:
         rows.append([
@@ -539,6 +545,26 @@ def get_quiz_finish_keyboard(
         ),
     ])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def get_delete_quiz_confirmation_keyboard(quiz_id: str, back_callback: str = "menu:history") -> InlineKeyboardMarkup:
+    """Testni o'chirishni tasdiqlash klaviaturasi."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🗑 Ha, butunlay o'chirilsin",
+                    callback_data=f"qdel:confirm:{quiz_id}",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="❌ Yo'q, bekor qilish",
+                    callback_data=f"qopen:{quiz_id}",
+                ),
+            ],
+        ]
+    )
 
 
 def get_my_quizzes_keyboard(

@@ -310,6 +310,28 @@ async def get_user_batches(user_id: int) -> list[dict[str, Any]]:
             return [dict(r) for r in rows]
 
 
+async def delete_quiz(quiz_id: str, user_id: int) -> bool:
+    """Foydalanuvchi tuzgan testni bazadan to'liq o'chirish."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT quiz_id FROM quizzes WHERE quiz_id = ? AND user_id = ?",
+            (quiz_id, user_id),
+        ) as cur:
+            row = await cur.fetchone()
+            if not row:
+                return False
+
+        await db.execute("DELETE FROM quizzes WHERE quiz_id = ? AND user_id = ?", (quiz_id, user_id))
+        await db.execute("DELETE FROM quiz_attempts WHERE quiz_id = ?", (quiz_id,))
+        await db.execute(
+            "UPDATE users SET tests_created = MAX(0, tests_created - 1) WHERE user_id = ?",
+            (user_id,),
+        )
+        await db.commit()
+    trigger_cloud_sync_background()
+    return True
+
+
 async def get_user_batch_quizzes(user_id: int, batch_id: int, limit: int = 6, offset: int = 0) -> list[dict[str, Any]]:
     """Muayyan to'plam/kategoriya ichidagi testlarni xronologik tartibda (1, 2, 3...) sahifalab olish."""
     async with aiosqlite.connect(DB_PATH) as db:
