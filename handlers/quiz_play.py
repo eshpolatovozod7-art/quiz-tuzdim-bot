@@ -826,6 +826,8 @@ async def handle_quiz_card_more(callback: CallbackQuery, bot: Bot) -> None:
     quiz_id = callback.data.split(":")[2]
     quiz = await get_quiz(quiz_id)
     title = quiz.get("title", "") if quiz else ""
+    b_id = quiz.get("batch_id") if quiz else None
+    back_cb = f"history:batch:{b_id}:1" if b_id else "menu:history"
     bot_info = await bot.get_me()
     try:
         await callback.message.edit_reply_markup(
@@ -834,6 +836,7 @@ async def handle_quiz_card_more(callback: CallbackQuery, bot: Bot) -> None:
                 bot_info.username or "quiz_tuzdimbot",
                 full_menu=True,
                 title=title,
+                back_callback=back_cb,
             )
         )
     except Exception:
@@ -847,6 +850,8 @@ async def handle_quiz_card_less(callback: CallbackQuery, bot: Bot) -> None:
     quiz_id = callback.data.split(":")[2]
     quiz = await get_quiz(quiz_id)
     title = quiz.get("title", "") if quiz else ""
+    b_id = quiz.get("batch_id") if quiz else None
+    back_cb = f"history:batch:{b_id}:1" if b_id else "menu:history"
     bot_info = await bot.get_me()
     try:
         await callback.message.edit_reply_markup(
@@ -855,6 +860,7 @@ async def handle_quiz_card_less(callback: CallbackQuery, bot: Bot) -> None:
                 bot_info.username or "quiz_tuzdimbot",
                 full_menu=False,
                 title=title,
+                back_callback=back_cb,
             )
         )
     except Exception:

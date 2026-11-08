@@ -16,12 +16,17 @@ from database.db import (
     get_last_quiz_attempt,
     get_quiz,
     get_group_leaderboard,
+    get_user_batches,
+    get_user_batch_quizzes,
+    get_user_batch_quizzes_count,
 )
 from keyboards.inline_keyboards import (
     get_main_menu_keyboard,
     get_quiz_card_keyboard,
     get_back_to_menu_keyboard,
     get_my_quizzes_keyboard,
+    get_my_quizzes_categories_keyboard,
+    get_batch_quizzes_keyboard,
 )
 from handlers.quiz_play import send_quiz_polls_to_chat, send_group_quiz_lobby, format_quiz_ready_text, format_quiz_single_ready_text
 
@@ -220,9 +225,46 @@ async def handle_history_noop(callback: CallbackQuery) -> None:
 @router.callback_query(F.data.startswith("history:tab:"))
 @router.callback_query(F.data.startswith("history:page:"))
 async def handle_history(event: Message | CallbackQuery, bot: Bot) -> None:
-    """Foydalanuvchi tuzgan va ishlagan barcha testlar ro'yxati (Sahifalash va Tablar bilan)."""
+    """Foydalanuvchi tuzgan va ishlagan barcha testlar ro'yxati (Kategoriyalar va To'plamlar bilan)."""
     user = event.from_user
     if not user:
+        return
+
+    is_direct_history = not isinstance(event, CallbackQuery) or event.data == "menu:history"
+    created_count = await get_user_quizzes_count(user.id)
+    taken_count = await get_user_taken_quizzes_count(user.id)
+    batches = await get_user_batches(user.id)
+
+    # Agar foydalanuvchi to'g'ridan-to'g'ri "Mening testlarim"ga kirsa va to'plamlar (kategoriyalar) mavjud bo'lsa:
+    if is_direct_history and batches:
+        if isinstance(event, CallbackQuery):
+            await event.answer()
+
+        batch_list_text = []
+        for b in batches:
+            b_id = b["batch_id"]
+            b_title = html.escape(b.get("batch_title") or f"{b_id}-to'plam", quote=False)
+            b_cnt = b.get("test_count", 0)
+            batch_list_text.append(f"📁 <b>{b_title}</b> — <i>{b_cnt} ta test</i>")
+
+        batch_desc = "\n".join(batch_list_text)
+        text = (
+            "📜 <b>Mening testlarim</b> (Kategoriyalar / To'plamlar):\n\n"
+            f"{batch_desc}\n\n"
+            "<i>Kerakli to'plamni tanlang (1-chi yaratgan testlaringiz, 2-chi yaratgan testlaringiz...):</i> 👇"
+        )
+        kb = get_my_quizzes_categories_keyboard(
+            batches=batches,
+            created_count=created_count,
+            taken_count=taken_count,
+        )
+        if isinstance(event, CallbackQuery) and event.message:
+            try:
+                await event.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+            except Exception:
+                await event.message.answer(text, reply_markup=kb, parse_mode="HTML")
+        else:
+            await event.answer(text, reply_markup=kb, parse_mode="HTML")
         return
 
     tab = "created"
@@ -232,7 +274,6 @@ async def handle_history(event: Message | CallbackQuery, bot: Bot) -> None:
         await event.answer()
         cdata = event.data or ""
         if cdata.startswith("history:tab:"):
-            # history:tab:created:1 yoki history:tab:taken:1
             parts = cdata.split(":")
             if len(parts) >= 3:
                 tab = parts[2]
@@ -242,7 +283,6 @@ async def handle_history(event: Message | CallbackQuery, bot: Bot) -> None:
                 except ValueError:
                     page = 1
         elif cdata.startswith("history:page:"):
-            # history:page:created:2 yoki history:page:taken:1
             parts = cdata.split(":")
             if len(parts) >= 3:
                 tab = parts[2]
@@ -252,11 +292,8 @@ async def handle_history(event: Message | CallbackQuery, bot: Bot) -> None:
                 except ValueError:
                     page = 1
 
-    created_count = await get_user_quizzes_count(user.id)
-    taken_count = await get_user_taken_quizzes_count(user.id)
-
-    # Agar foydalanuvchi tuzgan testlar bo'lmasa, lekin ishlagan testlari bo'lsa va tab belgilanmagan bo'lsa:
-    if created_count == 0 and taken_count > 0 and (not isinstance(event, CallbackQuery) or event.data == "menu:history"):
+    # Agar foydalanuvchi tuzgan testlar bo'lmasa, lekin ishlagan testlari bo'lsa:
+    if created_count == 0 and taken_count > 0 and is_direct_history:
         tab = "taken"
 
     per_page = 6
@@ -274,7 +311,7 @@ async def handle_history(event: Message | CallbackQuery, bot: Bot) -> None:
             )
         else:
             text = (
-                f"📜 <b>Siz tuzgan testlar ro'yxati:</b> (Jami: <b>{total_items} ta</b>)\n"
+                f"📜 <b>Barcha testlaringiz ro'yxati:</b> (Jami: <b>{total_items} ta</b>)\n"
                 f"📄 <i>Sahifa {page}/{total_pages}</i>\n\n"
                 f"<i>Test kartochkasini ochish, do'stlarga ulashish yoki boshlash uchun tanlang:</i> 👇"
             )
@@ -315,10 +352,63 @@ async def handle_history(event: Message | CallbackQuery, bot: Bot) -> None:
         await event.answer(text, reply_markup=kb, parse_mode="HTML")
 
 
+@router.callback_query(F.data.startswith("history:batch:"))
+async def handle_history_batch(callback: CallbackQuery, bot: Bot) -> None:
+    """Muayyan to'plam (kategoriya) ichidagi testlarni xronologik tartibda (1, 2, 3...) ko'rsatish."""
+    user = callback.from_user
+    if not user:
+        return
+    await callback.answer()
+
+    parts = callback.data.split(":")
+    batch_id = int(parts[2]) if len(parts) >= 3 else 1
+    page = int(parts[3]) if len(parts) >= 4 else 1
+
+    per_page = 6
+    total_items = await get_user_batch_quizzes_count(user.id, batch_id)
+    total_pages = max(1, (total_items + per_page - 1) // per_page)
+    page = max(1, min(page, total_pages))
+    offset = (page - 1) * per_page
+
+    quizzes = await get_user_batch_quizzes(user.id, batch_id, limit=per_page, offset=offset)
+
+    batch_title = f"{batch_id}-to'plam"
+    if quizzes and quizzes[0].get("batch_title"):
+        batch_title = quizzes[0]["batch_title"]
+
+    text = (
+        f"📁 <b>{html.escape(batch_title, quote=False)}</b>\n"
+        f"📊 Jami: <b>{total_items} ta test</b> | 📄 <i>Sahifa {page}/{total_pages}</i>\n\n"
+        f"<i>Testni ochish, ishlash yoki boshqalarga ulashish uchun tanlang:</i> 👇"
+    )
+
+    kb = get_batch_quizzes_keyboard(
+        batch_id=batch_id,
+        page=page,
+        total_pages=total_pages,
+        quizzes=quizzes,
+    )
+
+    if callback.message:
+        try:
+            await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+        except Exception:
+            await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
+
+
 @router.callback_query(F.data.startswith("qopen:"))
 async def handle_open_saved_quiz(callback: CallbackQuery, bot: Bot) -> None:
     """Tarixdan tanlangan test kartochkasini to'liq ochish."""
-    quiz_id = callback.data.split(":")[1]
+    parts = callback.data.split(":")
+    quiz_id = parts[1]
+
+    # Agar to'plamdan ochilgan bo'lsa, "Ortga" tugmasi aynan o'sha to'plam sahifasiga qaytadi
+    back_callback = "menu:history"
+    if len(parts) >= 5 and parts[2] == "batch":
+        b_id = parts[3]
+        b_page = parts[4]
+        back_callback = f"history:batch:{b_id}:{b_page}"
+
     quiz = await get_quiz(quiz_id)
     if not quiz:
         await callback.answer("⚠️ Kechirasiz, ushbu test topilmadi yoki o'chirilgan.", show_alert=True)
@@ -350,6 +440,7 @@ async def handle_open_saved_quiz(callback: CallbackQuery, bot: Bot) -> None:
                 bot_username=bot_username,
                 is_group=False,
                 title=quiz.get("title", ""),
+                back_callback=back_callback,
             ),
             parse_mode="HTML",
         )

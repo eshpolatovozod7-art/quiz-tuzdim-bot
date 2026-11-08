@@ -40,7 +40,9 @@ async def init_db() -> None:
                 options_count INTEGER,
                 timer_seconds INTEGER,
                 difficulty TEXT,
-                questions_json TEXT
+                questions_json TEXT,
+                batch_id INTEGER DEFAULT 1,
+                batch_title TEXT
             )
         """)
 
@@ -126,8 +128,65 @@ async def init_db() -> None:
             )
         """)
 
+        # quizzes jadvaliga batch_id va batch_title ustunlarini tekshirib qo'shish
+        try:
+            await db.execute("ALTER TABLE quizzes ADD COLUMN batch_id INTEGER DEFAULT 1;")
+        except Exception:
+            pass
+        try:
+            await db.execute("ALTER TABLE quizzes ADD COLUMN batch_title TEXT;")
+        except Exception:
+            pass
+
         await db.commit()
+        await _backfill_batches(db)
     logger.info("Ma'lumotlar bazasi tayyor: %s", DB_PATH)
+
+
+async def _backfill_batches(db: aiosqlite.Connection) -> None:
+    """Mavjud testlarni yaratilish vaqtiga ko'ra to'plamlarga (kategoriyalarga) ajratish."""
+    try:
+        async with db.execute("SELECT DISTINCT user_id FROM quizzes WHERE batch_title IS NULL") as cursor:
+            users = [r[0] for r in await cursor.fetchall()]
+
+        for uid in users:
+            async with db.execute(
+                "SELECT quiz_id, title, created_at FROM quizzes WHERE user_id = ? ORDER BY created_at ASC",
+                (uid,),
+            ) as cursor:
+                rows = await cursor.fetchall()
+
+            batches = []
+            curr = []
+            last_t = 0
+            for r in rows:
+                t = r[2]
+                if not curr:
+                    curr.append(r)
+                else:
+                    if abs(t - last_t) < 120:
+                        curr.append(r)
+                    else:
+                        batches.append(curr)
+                        curr = [r]
+                last_t = t
+            if curr:
+                batches.append(curr)
+
+            for b_idx, b in enumerate(batches, 1):
+                first_title = b[0][1]
+                if len(b) == 1:
+                    b_title = f"{b_idx}-to'plam: {first_title[:30]}"
+                else:
+                    b_title = f"{b_idx}-to'plam: {first_title[:24]} ({len(b)} ta test)"
+                for q in b:
+                    await db.execute(
+                        "UPDATE quizzes SET batch_id = ?, batch_title = ? WHERE quiz_id = ?",
+                        (b_idx, b_title, q[0]),
+                    )
+        await db.commit()
+    except Exception as e:
+        logger.warning("Batch backfill xatosi: %s", e)
 
 
 async def register_or_update_user(user_id: int, username: str | None, first_name: str | None) -> None:
@@ -164,19 +223,45 @@ async def save_quiz(
     options_count: int = 4,
     timer_seconds: int = 0,
     difficulty: str = "medium",
+    batch_id: int | None = None,
+    batch_title: str | None = None,
 ) -> None:
     """Yangi tuzilgan quizni saqlash."""
     async with aiosqlite.connect(DB_PATH) as db:
         now = time.time()
+
+        if batch_id is None:
+            async with db.execute(
+                "SELECT batch_id, batch_title, created_at FROM quizzes WHERE user_id = ? ORDER BY created_at DESC LIMIT 1",
+                (user_id,),
+            ) as cur:
+                last_row = await cur.fetchone()
+                if last_row and (now - last_row[2] < 120):
+                    batch_id = last_row[0] or 1
+                    batch_title = last_row[1] or f"{batch_id}-to'plam"
+                else:
+                    async with db.execute(
+                        "SELECT COALESCE(MAX(batch_id), 0) FROM quizzes WHERE user_id = ?",
+                        (user_id,),
+                    ) as m_cur:
+                        m_row = await m_cur.fetchone()
+                        max_b = m_row[0] if m_row else 0
+                        batch_id = max_b + 1
+                        batch_title = f"{batch_id}-to'plam: {title[:30]}"
+        elif batch_title is None:
+            batch_title = f"{batch_id}-to'plam: {title[:30]}"
+
         q_json = json.dumps(questions, ensure_ascii=False)
         await db.execute("""
             INSERT OR REPLACE INTO quizzes (
                 quiz_id, user_id, title, source_type, topic, created_at,
-                question_count, options_count, timer_seconds, difficulty, questions_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                question_count, options_count, timer_seconds, difficulty, questions_json,
+                batch_id, batch_title
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             quiz_id, user_id, title, source_type, topic, now,
-            len(questions), options_count, timer_seconds, difficulty, q_json
+            len(questions), options_count, timer_seconds, difficulty, q_json,
+            batch_id, batch_title
         ))
 
         # Savollar takrorlanmasligi uchun used_questions jadvaliga yozib boramiz
@@ -191,6 +276,72 @@ async def save_quiz(
         await db.commit()
     await increment_user_tests_created(user_id)
     trigger_cloud_sync_background()
+
+
+async def get_user_max_batch_id(user_id: int) -> int:
+    """Foydalanuvchining eng oxirgi to'plam (kategoriya) raqamini olish."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT COALESCE(MAX(batch_id), 0) FROM quizzes WHERE user_id = ?",
+            (user_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else 0
+
+
+async def get_user_batches(user_id: int) -> list[dict[str, Any]]:
+    """Foydalanuvchi tuzgan testlar to'plamlari (kategoriyalari) ro'yxati."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        sql = """
+        SELECT
+            batch_id,
+            COALESCE(batch_title, printf('%d-to''plam', batch_id)) as batch_title,
+            COUNT(*) as test_count,
+            MIN(created_at) as created_at,
+            GROUP_CONCAT(title, ' ||| ') as sample_titles
+        FROM quizzes
+        WHERE user_id = ?
+        GROUP BY batch_id
+        ORDER BY batch_id ASC
+        """
+        async with db.execute(sql, (user_id,)) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(r) for r in rows]
+
+
+async def get_user_batch_quizzes(user_id: int, batch_id: int, limit: int = 6, offset: int = 0) -> list[dict[str, Any]]:
+    """Muayyan to'plam/kategoriya ichidagi testlarni xronologik tartibda (1, 2, 3...) sahifalab olish."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        sql = """
+        SELECT * FROM quizzes
+        WHERE user_id = ? AND batch_id = ?
+        ORDER BY created_at ASC, rowid ASC
+        LIMIT ? OFFSET ?
+        """
+        async with db.execute(sql, (user_id, batch_id, limit, offset)) as cursor:
+            rows = await cursor.fetchall()
+            result = []
+            for r in rows:
+                item = dict(r)
+                try:
+                    item["questions"] = json.loads(item["questions_json"])
+                except Exception:
+                    item["questions"] = []
+                result.append(item)
+            return result
+
+
+async def get_user_batch_quizzes_count(user_id: int, batch_id: int) -> int:
+    """Muayyan to'plam/kategoriya ichidagi testlar sonini olish."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM quizzes WHERE user_id = ? AND batch_id = ?",
+            (user_id, batch_id),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else 0
 
 
 async def get_quiz(quiz_id: str) -> dict[str, Any] | None:

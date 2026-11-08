@@ -420,6 +420,11 @@ async def handle_batch_timer(callback: CallbackQuery, bot: Bot, state: FSMContex
         return
 
     # Har bir mavzu bo'yicha alohida quiz yaratish va bazaga saqlash
+    from database.db import get_user_max_batch_id
+    max_b = await get_user_max_batch_id(user_id)
+    new_batch_id = max_b + 1
+    new_batch_title = f"{new_batch_id}-to'plam: {clean_title[:22]} ({len(topics_data)} ta test)"
+
     created_quizzes = []
     for t_item in topics_data:
         t_title = t_item.get("topic_title") or "Dars"
@@ -439,6 +444,8 @@ async def handle_batch_timer(callback: CallbackQuery, bot: Bot, state: FSMContex
             options_count=4,
             timer_seconds=tm,
             difficulty="medium",
+            batch_id=new_batch_id,
+            batch_title=new_batch_title,
         )
         created_quizzes.append({
             "quiz_id": q_id,

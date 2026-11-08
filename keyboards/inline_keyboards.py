@@ -358,6 +358,7 @@ def get_quiz_card_keyboard(
     full_menu: bool = False,
     is_group: bool = False,
     title: str = "",
+    back_callback: str = "menu:history",
 ) -> InlineKeyboardMarkup:
     """Quiz kartochkasi klaviaturasi.
     - Guruhda bo'lsa (is_group=True): QuizBot kabi yagona 'Men tayyorman!' tugmasi.
@@ -401,8 +402,8 @@ def get_quiz_card_keyboard(
                 ],
                 [
                     InlineKeyboardButton(
-                        text="📜 Mening testlarim",
-                        callback_data="menu:history",
+                        text="◀️ Ortga",
+                        callback_data=back_callback,
                     ),
                     InlineKeyboardButton(
                         text="🏠 Bosh menyu",
@@ -456,8 +457,8 @@ def get_quiz_card_keyboard(
         ])
     rows.append([
         InlineKeyboardButton(
-            text="📜 Mening testlarim",
-            callback_data="menu:history",
+            text="◀️ Ortga",
+            callback_data=back_callback,
         ),
         InlineKeyboardButton(
             text="🔙 Qisqa menyu",
@@ -604,6 +605,98 @@ def get_my_quizzes_keyboard(
     # 4. Asosiy harakatlar
     rows.append([
         InlineKeyboardButton(text="🎲 Yangi test tuzish", callback_data="menu:create"),
+        InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="menu:home"),
+    ])
+
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def get_my_quizzes_categories_keyboard(
+    batches: list[dict[str, Any]],
+    created_count: int,
+    taken_count: int,
+) -> InlineKeyboardMarkup:
+    """Mening testlarim to'plamlari (kategoriyalari: 1-chi, 2-chi, 3-chi...) klaviaturasi."""
+    rows = []
+
+    # 1. Tablar: To'plamlar vs Ishlagan testlarim
+    rows.append([
+        InlineKeyboardButton(text=f"🟢 📁 To'plamlar ({len(batches)})", callback_data="menu:history"),
+        InlineKeyboardButton(text=f"🎯 Ishlaganlarim ({taken_count})", callback_data="history:tab:taken:1"),
+    ])
+
+    # 2. Har bir to'plam uchun chiroyli tugma (1-chi yaratgan testlar, 2-chi...)
+    for b in batches:
+        b_id = b["batch_id"]
+        b_title = b.get("batch_title") or f"{b_id}-to'plam"
+        b_cnt = b.get("test_count", 0)
+        btn_text = f"📁 {b_title}"
+        if len(btn_text) > 36:
+            btn_text = btn_text[:33] + "..."
+        rows.append([
+            InlineKeyboardButton(text=btn_text, callback_data=f"history:batch:{b_id}:1")
+        ])
+
+    # 3. Barcha testlarni birgalikda ko'rish
+    rows.append([
+        InlineKeyboardButton(text=f"📋 Barcha testlar (Jami: {created_count} ta)", callback_data="history:tab:created:1")
+    ])
+
+    # 4. Asosiy harakatlar
+    rows.append([
+        InlineKeyboardButton(text="🎲 Yangi test tuzish", callback_data="menu:create"),
+        InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="menu:home"),
+    ])
+
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def get_batch_quizzes_keyboard(
+    batch_id: int,
+    page: int,
+    total_pages: int,
+    quizzes: list[dict[str, Any]],
+) -> InlineKeyboardMarkup:
+    """To'plam ichidagi testlarni xronologik tartibda (1, 2, 3...) sahifalash klaviaturasi."""
+    rows = []
+
+    # 1. Joriy sahifadagi testlar
+    start_num = (page - 1) * 6 + 1
+    for idx, q in enumerate(quizzes, start=start_num):
+        q_id = q["quiz_id"]
+        raw_title = q.get("title", "Test")
+        title = raw_title[:23] + "..." if len(raw_title) > 26 else raw_title
+        count = q.get("question_count", len(q.get("questions", [])))
+        tm = q.get("timer_seconds", 0)
+        tm_str = "Cheksiz" if tm == 0 else f"{tm}s"
+        btn_text = f"{idx}. 🎯 {title} ({count} ta, ⏱ {tm_str})"
+
+        rows.append([
+            InlineKeyboardButton(
+                text=btn_text,
+                callback_data=f"qopen:{q_id}:batch:{batch_id}:{page}",
+            )
+        ])
+
+    # 2. Sahifalash (Pagination)
+    if total_pages > 1:
+        nav_row = []
+        if page > 1:
+            nav_row.append(
+                InlineKeyboardButton(text="◀️ Oldingi", callback_data=f"history:batch:{batch_id}:{page - 1}")
+            )
+        nav_row.append(
+            InlineKeyboardButton(text=f"📄 {page}/{total_pages}", callback_data="history:noop")
+        )
+        if page < total_pages:
+            nav_row.append(
+                InlineKeyboardButton(text="Keyingi ▶️", callback_data=f"history:batch:{batch_id}:{page + 1}")
+            )
+        rows.append(nav_row)
+
+    # 3. Ortga qaytish
+    rows.append([
+        InlineKeyboardButton(text="◀️ To'plamlar ro'yxatiga qaytish", callback_data="menu:history"),
         InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="menu:home"),
     ])
 
