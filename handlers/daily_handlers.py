@@ -80,6 +80,10 @@ async def handle_daily_quiz(event: Message | CallbackQuery, bot: Bot) -> None:
         logger.error("Daily quiz xatosi: %s", e)
         questions = []
 
+    if not questions:
+        from services.quiz_service import get_offline_quiz_questions
+        questions = get_offline_quiz_questions(selected_topic, 1, 4)
+
     try:
         await status_msg.delete()
     except Exception:

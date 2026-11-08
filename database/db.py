@@ -12,6 +12,9 @@ logger = logging.getLogger(__name__)
 async def init_db() -> None:
     """Ma'lumotlar bazasi jadvallarini ishga tushirish."""
     async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("PRAGMA journal_mode = WAL;")
+        await db.execute("PRAGMA busy_timeout = 5000;")
+        await db.execute("PRAGMA synchronous = NORMAL;")
         await db.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
@@ -258,6 +261,30 @@ async def save_attempt(
         return attempt_id
 
 
+async def get_last_quiz_attempt(quiz_id: str, user_id: int) -> dict[str, Any] | None:
+    """Foydalanuvchining ushbu test bo'yicha eng oxirgi urinishi va xato savollarini olish."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """
+            SELECT * FROM quiz_attempts
+            WHERE quiz_id = ? AND user_id = ?
+            ORDER BY completed_at DESC
+            LIMIT 1
+            """,
+            (quiz_id, user_id),
+        ) as cursor:
+            row = await cursor.fetchone()
+            if not row:
+                return None
+            res = dict(row)
+            try:
+                res["wrong_questions"] = json.loads(res.get("wrong_questions_json") or "[]")
+            except Exception:
+                res["wrong_questions"] = []
+            return res
+
+
 async def get_user_stats(user_id: int) -> dict[str, Any]:
     """Foydalanuvchining umumiy statistikasini olish."""
     async with aiosqlite.connect(DB_PATH) as db:
@@ -357,6 +384,7 @@ async def record_group_answer(
                 last_active = excluded.last_active
         """, (group_id, quiz_id, user_id, user_name, inc_score, now, inc_score))
         await db.commit()
+        mark_db_dirty()
 
 
 async def get_group_leaderboard(group_id: int, quiz_id: str | None = None, limit: int = 10) -> list[dict[str, Any]]:
@@ -406,6 +434,7 @@ async def add_channel_schedule(
             VALUES (?, ?, ?, ?, ?, ?, ?, 1)
         """, (user_id, channel_id, channel_title, topic, question_count, interval_hours, now))
         await db.commit()
+        mark_db_dirty()
         return cursor.lastrowid
 
 
@@ -453,6 +482,7 @@ async def delete_channel_schedule(schedule_id: int, user_id: int) -> None:
             (schedule_id, user_id),
         )
         await db.commit()
+        mark_db_dirty()
 
 
 # ---------------- Kundalik Streak (Olov) Tizimi ---------------- #
@@ -479,6 +509,7 @@ async def record_or_update_user_streak(user_id: int) -> tuple[int, int, bool]:
                 VALUES (?, 1, 1, ?, ?)
             """, (user_id, today, now))
             await db.commit()
+            mark_db_dirty()
             return 1, 1, True
 
         last_date = row["last_active_date"]
@@ -504,6 +535,7 @@ async def record_or_update_user_streak(user_id: int) -> tuple[int, int, bool]:
             WHERE user_id = ?
         """, (new_current, new_longest, today, now, user_id))
         await db.commit()
+        mark_db_dirty()
         return new_current, new_longest, True
 
 
@@ -552,6 +584,7 @@ async def create_duel(
             ) VALUES (?, ?, ?, ?, ?, 'waiting', ?)
         """, (duel_id, creator_id, creator_name, topic, q_json, now))
         await db.commit()
+        mark_db_dirty()
 
 
 async def get_duel(duel_id: str) -> dict[str, Any] | None:
@@ -586,6 +619,7 @@ async def join_duel(duel_id: str, opponent_id: int, opponent_name: str) -> bool:
             WHERE duel_id = ?
         """, (opponent_id, opponent_name, duel_id))
         await db.commit()
+        mark_db_dirty()
         return True
 
 
@@ -622,6 +656,7 @@ async def submit_duel_result(
             """, (score, time_spent, duel_id))
 
         await db.commit()
+        mark_db_dirty()
 
         # Yangilangan holatni olish
         async with db.execute("SELECT * FROM duels WHERE duel_id = ?", (duel_id,)) as cursor:
@@ -649,6 +684,7 @@ async def update_quiz_timer(quiz_id: str, new_timer: int) -> bool:
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("UPDATE quizzes SET timer_seconds = ? WHERE quiz_id = ?", (new_timer, quiz_id))
         await db.commit()
+        mark_db_dirty()
         return True
 
 

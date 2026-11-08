@@ -15,7 +15,7 @@ from aiogram.types import (
     BufferedInputFile,
 )
 
-from database.db import get_quiz, save_attempt, record_group_answer, update_quiz_timer
+from database.db import get_quiz, save_attempt, record_group_answer, update_quiz_timer, get_last_quiz_attempt
 from keyboards.inline_keyboards import get_quiz_finish_keyboard, get_change_timer_keyboard, get_quiz_card_keyboard
 from services.tts_service import generate_audio_bytes
 
@@ -24,6 +24,8 @@ router = Router()
 
 # Faol test sessiyalari: session_key (chat_id) -> session_dict
 _active_sessions: dict[int, dict[str, Any]] = {}
+# Oxirgi yakunlangan xato savollar kesh (Xatolar ustida ishlash tugmasi uchun): chat_id -> list[dict]
+_last_completed_wrong_questions: dict[int, list[dict[str, Any]]] = {}
 # poll_id -> session_key
 _poll_map: dict[str, int] = {}
 # Standalone / Guruh pollari: poll_id -> (chat_id, quiz_id, correct_id, start_time)
@@ -388,6 +390,14 @@ async def handle_retry_wrong_questions(callback: CallbackQuery, bot: Bot) -> Non
     if old_session and old_session.get("wrong_questions"):
         wrong_questions = old_session["wrong_questions"]
 
+    if not wrong_questions and session_key in _last_completed_wrong_questions:
+        wrong_questions = _last_completed_wrong_questions[session_key]
+
+    if not wrong_questions:
+        attempt = await get_last_quiz_attempt(quiz_id, user_id)
+        if attempt and attempt.get("wrong_questions"):
+            wrong_questions = attempt["wrong_questions"]
+
     if not wrong_questions:
         await callback.answer("Xatolar topilmadi yoki barchasi to'g'ri yechilgan!", show_alert=True)
         return
@@ -475,7 +485,15 @@ async def send_quiz_polls_to_chat(bot: Bot, chat_id: int, quiz: dict[str, Any]) 
                 except Exception as a_err:
                     logger.warning("Audio jo'natishda xatolik: %s", a_err)
 
-            msg = await bot.send_poll(**poll_kwargs)
+            msg = None
+            try:
+                msg = await bot.send_poll(**poll_kwargs)
+            except Exception as pe:
+                if "anonymous" in str(pe).lower() or "channel" in str(pe).lower():
+                    poll_kwargs["is_anonymous"] = True
+                    msg = await bot.send_poll(**poll_kwargs)
+                else:
+                    raise pe
             if msg and msg.poll:
                 _group_poll_map[msg.poll.id] = (chat_id, quiz.get("quiz_id", ""), c_id)
             await asyncio.sleep(0.35)
@@ -698,6 +716,8 @@ async def run_group_quiz_loop(chat_id: int, quiz: dict[str, Any], bot: Bot, sess
                     msg = await bot.send_poll(**poll_kwargs)
                     break
                 except Exception as pe:
+                    if "anonymous" in str(pe).lower() or "channel" in str(pe).lower():
+                        poll_kwargs["is_anonymous"] = True
                     logger.warning("Guruhda poll jo'natishda xatolik (%d-urinish): %s", attempt + 1, pe)
                     await asyncio.sleep(1.0)
 
@@ -1027,6 +1047,8 @@ async def finish_quiz(session_key: int, bot: Bot) -> None:
     session = _active_sessions.pop(session_key, None)
     if not session:
         return
+
+    _last_completed_wrong_questions[session_key] = list(session.get("wrong_questions", []))
 
     pid = session.get("current_poll_id")
     if pid and pid in _poll_map:

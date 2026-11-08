@@ -3,7 +3,7 @@ import logging
 from aiogram import Router, F, Bot
 from aiogram.types import CallbackQuery, BufferedInputFile
 
-from database.db import get_quiz, get_group_quiz_results_for_excel
+from database.db import get_quiz, get_group_quiz_results_for_excel, get_last_quiz_attempt
 from services.export_service import generate_quiz_pdf, generate_quiz_docx, generate_quizbot_text
 from services.certificate_service import generate_certificate
 from services.excel_service import generate_quiz_results_excel
@@ -34,8 +34,9 @@ async def handle_export_pdf(callback: CallbackQuery, bot: Bot) -> None:
         filename = f"Test_{safe_title[:25]}.pdf"
 
         file = BufferedInputFile(pdf_bytes, filename=filename)
+        esc_title = html.escape(title, quote=False)
         caption = (
-            f"📄 <b>\"{title}\" — Chop etish uchun PDF test varaqasi</b>\n\n"
+            f"📄 <b>\"{esc_title}\" — Chop etish uchun PDF test varaqasi</b>\n\n"
             f"• Jami savollar: {len(questions)} ta\n"
             f"• Oxirgi qismida to'g'ri javoblar kaliti va izohlar mavjud.\n\n"
             f"<i>Ushbu PDF faylni printerdan chiqarib, dars yoki imtihonlarda to'g'ridan-to'g'ri qo'llashingiz mumkin!</i>"
@@ -66,8 +67,9 @@ async def handle_export_docx(callback: CallbackQuery, bot: Bot) -> None:
         filename = f"Test_{safe_title[:25]}.docx"
 
         file = BufferedInputFile(docx_bytes, filename=filename)
+        esc_title = html.escape(title, quote=False)
         caption = (
-            f"📝 <b>\"{title}\" — Tahrirlanadigan Word (.docx) hujjati</b>\n\n"
+            f"📝 <b>\"{esc_title}\" — Tahrirlanadigan Word (.docx) hujjati</b>\n\n"
             f"• Savollar va javoblar kaliti bilan.\n"
             f"<i>Microsoft Word yoki WPS da xohlagancha tahrirlashingiz mumkin.</i>"
         )
@@ -168,16 +170,26 @@ async def handle_ai_tutor_analysis(callback: CallbackQuery, bot: Bot) -> None:
     quiz = await get_quiz(quiz_id)
     title = quiz["title"] if quiz else "Test"
 
-    # Xato savollarni topish
-    from handlers.quiz_play import _active_sessions
+    # Xato savollarni topish (kesh, sessiyalar yoki bazadagi oxirgi urinishdan)
+    from handlers.quiz_play import _active_sessions, _last_completed_wrong_questions
+    user_id = callback.from_user.id
     wrong_questions = []
-    for s in _active_sessions.values():
-        if s.get("quiz_id") == quiz_id and s.get("wrong_questions"):
-            wrong_questions = s["wrong_questions"]
-            break
+
+    if user_id in _last_completed_wrong_questions and _last_completed_wrong_questions[user_id]:
+        wrong_questions = _last_completed_wrong_questions[user_id]
+    else:
+        for s in _active_sessions.values():
+            if s.get("quiz_id") == quiz_id and s.get("wrong_questions"):
+                wrong_questions = s["wrong_questions"]
+                break
+
+    if not wrong_questions:
+        attempt = await get_last_quiz_attempt(quiz_id, user_id)
+        if attempt and attempt.get("wrong_questions"):
+            wrong_questions = attempt["wrong_questions"]
 
     if not wrong_questions and quiz:
-        # Sessiya tozalanib ketgan bo'lsa, quizning savollaridan namuna
+        # Xatolar umuman bo'lmasa yoki barchasi to'g'ri bo'lsa, quizning savollaridan namuna
         wrong_questions = quiz.get("questions", [])[:3]
 
     analysis = await tutor_service.analyze_wrong_questions(title, wrong_questions)

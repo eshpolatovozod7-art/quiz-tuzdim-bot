@@ -442,9 +442,10 @@ async def handle_batch_timer(callback: CallbackQuery, bot: Bot, state: FSMContex
         except Exception:
             pass
 
+    target_chat_id = callback.message.chat.id if callback.message else callback.from_user.id
     if not created_quizzes:
         await bot.send_message(
-            chat_id=callback.message.chat.id,
+            chat_id=target_chat_id,
             text="⚠️ Mavzular bo'yicha savollar shakllantirilmadi.",
             reply_markup=get_back_to_menu_keyboard(),
         )
@@ -471,7 +472,7 @@ async def handle_batch_timer(callback: CallbackQuery, bot: Bot, state: FSMContex
         f"<i>Istalgan testni boshlash yoki do'stlarga ulashish uchun quyidagi ro'yxatdan tanlang:</i> 👇"
     )
     await bot.send_message(
-        chat_id=callback.message.chat.id,
+        chat_id=target_chat_id,
         text=finish_text,
         reply_markup=kb,
         parse_mode="HTML",
@@ -981,8 +982,9 @@ async def handle_qcfg_timer(callback: CallbackQuery, bot: Bot, state: FSMContext
     }
     card_text = format_quiz_ready_text(quiz_obj, bot_username=bot_username, is_group=False)
 
+    target_chat_id = callback.message.chat.id if callback.message else callback.from_user.id
     await bot.send_message(
-        chat_id=callback.message.chat.id,
+        chat_id=target_chat_id,
         text=card_text,
         reply_markup=get_quiz_card_keyboard(quiz_id, bot_username=bot_username, is_group=False),
         parse_mode="HTML",
