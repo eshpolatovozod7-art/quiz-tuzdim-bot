@@ -202,6 +202,9 @@ def get_popular_topics_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
+                InlineKeyboardButton(text="✏️ O'z mavzuyimni yozaman", callback_data="menu:custom_topic"),
+            ],
+            [
                 InlineKeyboardButton(text="📐 Matematika", callback_data="qfan:matematika"),
                 InlineKeyboardButton(text="💻 Dasturlash (IT)", callback_data="qfan:dasturlash"),
             ],
@@ -241,6 +244,7 @@ def get_subtopics_keyboard(fan_key: str) -> InlineKeyboardMarkup:
         last_label, last_val = topics[-1]
         rows.append([InlineKeyboardButton(text=last_label, callback_data=f"qtop:{last_val}")])
 
+    rows.append([InlineKeyboardButton(text="✏️ O'z mavzuyimni yozaman", callback_data=f"menu:custom_topic:{fan_key}")])
     rows.append([InlineKeyboardButton(text="🔙 Boshqa fanlar", callback_data="menu:topic")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 

@@ -34,6 +34,7 @@ from services.quiz_service import (
     get_offline_quiz_questions,
     save_user_media,
     get_user_media,
+    clear_user_media,
 )
 from services.web_service import get_youtube_transcript_text, fetch_web_page_text
 from utils.states import QuizCreateState
@@ -66,10 +67,12 @@ async def handle_create_menu(event: Message | CallbackQuery, state: FSMContext) 
 def clean_topic_input(text: str) -> str:
     """Foydalanuvchi yozgan test buyrug'i yoki matnidan asosiy mavzu nomini tozalab ajratib olish."""
     cleaned = text.strip()
+    # "Menga ... kerak", "Iltimos ...", "Bot ..." kabilarni boshidan tozalash
+    cleaned = re.sub(r"^(menga|iltimos|bot|salom|qani)[\s,]+", "", cleaned, flags=re.IGNORECASE)
     # "Mavzu:", "Mavzusi:" kabilarni boshidan tozalash
-    cleaned = re.sub(r"^(mavzu|mavzusi|fan|mavzusi bo['‘`]?yicha)\s*[:\-–—]?\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"^(mavzu(si)?|fan(i)?|mavzusi bo['‘`]?yicha)\s*[:\-–—]?\s*", "", cleaned, flags=re.IGNORECASE)
     # "haqida test tuzib ber", "mavzusida test", "ga test", "test tuz" kabilarni oxiridan tozalash
-    cleaned = re.sub(r"\s+(haqida|bo['‘`]?yicha|ga|dan)?\s*(test|savollar|viktorina)\s*(tuzib ber|tuzish|tuz|qilib ber|kerak)?\s*$", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s+(haqida|bo['‘`]?yicha|ga|dan)?\s*(test|savollar|viktorina|quiz)(\s*(tuzib ber|tuzish|tuz|qilib ber|kerak|ber))?\s*$", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\s+mavzusida\b", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\s+haqida\b", "", cleaned, flags=re.IGNORECASE)
     cleaned = cleaned.strip()
@@ -83,12 +86,52 @@ async def handle_menu_topic(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
     text = (
         "✍️ <b>Mavzu bo‘yicha test tuzish:</b>\n\n"
-        "O‘zingiz istagan <b>har qanday mavzuni chatga yozib yuboring</b>:\n"
-        "<i>(Masalan: Nyuton qonunlari, Kvadrat tenglamalar, Present Continuous, Alisher Navoiy, Hujayra tuzilishi...)</i>\n\n"
-        "Yoki fanni tanlab, uning ichidagi <b>aniq mavzulardan birini tanlang</b>: 👇"
+        "1️⃣ <b>O‘z mavzuingizni yozishingiz mumkin:</b>\n"
+        "Chatga istalgan mavzuni yozib yuboring yoki quyidagi «✏️ O'z mavzuyimni yozaman» tugmasini bosing.\n"
+        "<i>(Masalan: Nyuton qonunlari, Present Continuous, Alisher Navoiy, Kvadrat tenglamalar...)</i>\n\n"
+        "2️⃣ <b>Yoki tayyor fanlardan birini tanlang:</b> 👇"
     )
     if callback.message:
         await callback.message.edit_text(text, reply_markup=get_popular_topics_keyboard(), parse_mode="HTML")
+
+
+@router.callback_query(F.data.startswith("menu:custom_topic"))
+async def handle_custom_topic(callback: CallbackQuery, state: FSMContext) -> None:
+    """Foydalanuvchi o'z mavzusini yozishi uchun ko'rsatma."""
+    parts = callback.data.split(":")
+    fan_key = parts[2] if len(parts) > 2 else None
+    fan_title = FAN_TOPICS.get(fan_key, {}).get("title") if fan_key else None
+
+    await state.set_state(QuizCreateState.waiting_topic)
+    await callback.answer()
+
+    if fan_title:
+        text = (
+            f"✏️ <b>{fan_title} bo‘yicha o‘z mavzuingizni yozing:</b>\n\n"
+            f"O‘zingiz istagan aniq mavzu, bo‘lim yoki qoida nomini <b>chatga yozib yuboring</b>:\n\n"
+            f"<i>Sun'iy intellekt xuddi ustozlarday ushbu mavzu bo‘yicha chuqur va sifatli test tuzib beradi!</i> 👇"
+        )
+    else:
+        text = (
+            "✏️ <b>O‘z mavzuingizni yozing:</b>\n\n"
+            "Istalgan mavzu, fan yoki yo‘nalish nomini <b>chatga yozib yuboring</b>:\n\n"
+            "<i>Masalan:</i>\n"
+            "• <code>Present Continuous va zamonlar</code>\n"
+            "• <code>Nyutonning 3-qonuni va dinamika</code>\n"
+            "• <code>Kvadrat tenglamalar va Viyet formulasi</code>\n"
+            "• <code>Alisher Navoiy hayoti va Xamsa</code>\n"
+            "• <code>O'zbekiston iqtisodiyoti va investitsiyalar</code>\n"
+            "• <code>Python dasturlash: Funksiyalar va OOP</code>\n\n"
+            "<i>Marhamat, mavzuni chatga yozing:</i> 👇"
+        )
+    back_target = f"qfan:{fan_key}" if fan_key else "menu:topic"
+    back_kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Ortga", callback_data=back_target)],
+        ]
+    )
+    if callback.message:
+        await callback.message.edit_text(text, reply_markup=back_kb, parse_mode="HTML")
 
 
 @router.callback_query(F.data.startswith("qfan:"))
@@ -100,6 +143,8 @@ async def handle_fan_select(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.answer()
         return
 
+    # Foydalanuvchi ushbu ekranda turib ham chatga xohlagan mavzusini yozishi mumkin
+    await state.set_state(QuizCreateState.waiting_topic)
     title = fan_info["title"]
     kb = get_subtopics_keyboard(fan_key)
     text = (
@@ -114,16 +159,18 @@ async def handle_fan_select(callback: CallbackQuery, state: FSMContext) -> None:
 @router.callback_query(F.data.startswith("qtop:"))
 async def handle_topic_preset(callback: CallbackQuery, state: FSMContext) -> None:
     topic_name = callback.data.split(":", 1)[1]
+    clear_user_media(callback.from_user.id)
     await callback.answer(f"{topic_name[:30]} tanlandi")
     await start_quiz_wizard(callback.message, state, topic=topic_name, source_type="topic", user_id=callback.from_user.id)
 
 
 # ---------------- Xabarlarni qabul qilish ---------------- #
 
-@router.message(QuizCreateState.waiting_topic, F.text)
+@router.message(QuizCreateState.waiting_topic, F.text & ~F.text.startswith("/"))
 async def process_topic_text(message: Message, state: FSMContext) -> None:
     raw_topic = message.text.strip()
     clean_topic = clean_topic_input(raw_topic)
+    clear_user_media(message.from_user.id)
     await start_quiz_wizard(message, state, topic=clean_topic, label=clean_topic, source_type="topic", user_id=message.from_user.id)
 
 
@@ -733,29 +780,15 @@ async def process_plain_text(message: Message, state: FSMContext) -> None:
         )
         return
 
-    is_grammar = is_english_grammar_or_formula_content(topic=text, text=text)
-    is_en = is_english_content(topic=text, text=text)
-    if is_grammar or is_en:
-        clean_topic = clean_topic_input(text)
-        title = clean_topic[:35]
-        save_user_media(message.from_user.id, text_content=text)
-        await start_quiz_wizard(
-            message,
-            state,
-            topic=clean_topic,
-            text_content=text,
-            label=title,
-            source_type="text",
-            user_id=message.from_user.id,
-        )
-    elif len(text) > 200:
-        # Uzun matn bo'lsa, konspekt deb hisoblaymiz
+    if len(text) > 200:
+        # Uzun matn bo'lsa (maqola, konspekt), matn manbasi sifatida qabul qilamiz
         title = text[:35].replace("\n", " ").strip() + "..."
         save_user_media(message.from_user.id, text_content=text)
         await start_quiz_wizard(message, state, text_content=text, label=title, source_type="text", user_id=message.from_user.id)
     else:
-        # Qisqa matn bo'lsa, aniq mavzu deb hisoblaymiz (masalan: "Nyuton qonunlari", "Kvadrat tenglamalar", "Present Continuous")
+        # Qisqa matn bo'lsa (xoh ingliz tili, xoh fizika, matematika, biologiya, tarix) — mustaqil MAVZU deb qabul qilamiz
         clean_topic = clean_topic_input(text)
+        clear_user_media(message.from_user.id)
         await start_quiz_wizard(message, state, topic=clean_topic, label=clean_topic, source_type="topic", user_id=message.from_user.id)
 
 

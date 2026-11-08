@@ -752,3 +752,8 @@ def get_user_media(user_id: int) -> dict[str, Any] | None:
     if data and (time.time() - data.get("time", 0) < 7200):
         return data
     return None
+
+
+def clear_user_media(user_id: int) -> None:
+    """Foydalanuvchining keshdagi eski fayl/matnini tozalash (yangi mavzuga aralashmasligi uchun)."""
+    _user_media_cache.pop(user_id, None)
