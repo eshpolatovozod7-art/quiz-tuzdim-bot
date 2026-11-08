@@ -110,6 +110,53 @@ def is_english_grammar_or_formula_content(
     return False
 
 
+def is_english_content(
+    topic: str | None = None,
+    text: str | None = None,
+    filename: str | None = None,
+) -> bool:
+    """Mavzu, matn yoki fayl ingliz tili (grammatika, lug'at, IELTS, CEFR va h.k.)ga oidligini aniqlash."""
+    combined = f"{topic or ''} {filename or ''} {(text or '')[:15000]}".lower()
+
+    # 1. Ingliz tili kalit so'zlari
+    english_keywords = [
+        "ingliz", "english", "ielts", "cefr", "toefl", "duolingo",
+        "vocabulary", "phrasal verb", "collocation", "grammar",
+        "preposition", "tense", "modal verb", "irregular verb",
+        "conditional", "passive voice", "reported speech", "gerund",
+        "infinitive", "milliy sertifikat", "reading comprehension",
+        "listening", "inversion", "relative clause", "conjunction",
+        "idiom", "idioms", "antonym", "synonym", "cambridge",
+        "dtm ingliz", "b1 english", "b2 english", "c1 english", "a1 english", "a2 english",
+    ]
+    if any(k in combined for k in english_keywords):
+        return True
+
+    # 2. Grammatika va formulalar tekshiruvi
+    if is_english_grammar_or_formula_content(topic, text, filename):
+        return True
+
+    # 3. Matndagi inglizcha to'xtash so'zlari ulushi (Inglizcha matn/kitob/maqolani aniqlash)
+    words = [w.strip(".,!?:;\"'()[]{}") for w in combined.split() if w.strip()]
+    if len(words) >= 15:
+        common_en_stop_words = {
+            "the", "be", "to", "of", "and", "a", "in", "that", "have", "i",
+            "it", "for", "not", "on", "with", "he", "as", "you", "do", "at",
+            "this", "but", "his", "by", "from", "they", "we", "say", "her",
+            "she", "or", "an", "will", "my", "one", "all", "would", "there",
+            "their", "what", "so", "up", "out", "if", "about", "who", "get",
+            "which", "go", "me", "when", "make", "can", "like", "time", "no",
+            "just", "him", "know", "take", "people", "into", "year", "your",
+            "good", "some", "could", "them", "see", "other", "than", "then",
+            "now", "look", "only", "come", "its", "over", "think", "also"
+        }
+        en_stop_count = sum(1 for w in words[:100] if w in common_en_stop_words)
+        if en_stop_count >= 10 and (en_stop_count / len(words[:100])) > 0.15:
+            return True
+
+    return False
+
+
 PEDAGOGICAL_DEPTH_DIRECTIVE = (
     "\n"
     "════════════════════════════════════════════════════════════════════\n"
@@ -132,6 +179,32 @@ PEDAGOGICAL_DEPTH_DIRECTIVE = (
     "5. EXPLANATION (IZOH) PEDAGOGIK AHAMIYATGA EGA BO'LSIN:\n"
     "   - Shunchaki 'A javob to'g'ri' deb quruq yozilmasin.\n"
     "   - Qisqa, lo'nda va ilmiy-ommabop qilib (maksimal 180 belgi) nima uchun aynan shu javob to'g'riligi va qaysi mexanizm ishlashi o'quvchiga o'rgatilsin.\n"
+    "════════════════════════════════════════════════════════════════════\n\n"
+)
+
+
+ENGLISH_PEDAGOGICAL_MASTER_DIRECTIVE = (
+    "\n"
+    "════════════════════════════════════════════════════════════════════\n"
+    "🇬🇧 INGLIZ TILI BO'YICHA XALQARO DARAJA (CAMBRIDGE / CEFR / IELTS) CHUQURLIK STANDARTI:\n"
+    "════════════════════════════════════════════════════════════════════\n"
+    "Ingliz tili bo'yicha savollarda SAYOZLIK (boshlang'ich yodlash) QAT'IYAN TAQIQLANADI:\n\n"
+    "1. QURUQ TARJIMA VA QURUQ NAZARIYAT ASLO TUZILMASIN:\n"
+    "   - 'X so'zining o'zbekcha tarjimasi nima?', 'Y so'zining sinonimi qaysi?' kabi 1 soniyalik quruq tarjima savollari MUTLAQO TAQIQLANADI!\n"
+    "   - 'Present Perfect formulasini toping', 'Ushbu gap qaysi zamonda?' kabi quruq nomlash savollari TAQIQLANADI!\n\n"
+    "2. SO'Z BOYLIGI VA IBORALAR FAQAT JONLI KONTEKSTDA (CONTEXTUAL VOCABULARY & COLLOCATIONS):\n"
+    "   - So'zlar, frazeologik birikmalar (phrasal verbs) va iboralar to'liq, mazmunli gap ichida '______' qoldirilib tekshirilsin.\n"
+    "   - Kollokatsiyalar (masalan: 'make an effort', 'pay attention to', 'take into account', 'heavy traffic') va bog'lanuvchi predloglar (e.g. 'interested in', 'prevent from', 'accused of') tabiiy kontekstda berilsin.\n"
+    "   - Gap ichida to'g'ri so'zni tanlashga undovchi mantiqiy kalit (context clue, collocation, preposition) bo'lishi shart.\n\n"
+    "3. GRAMMATIKA — AMALIY VA CHUQUR VAZIYATLI GAP TO'LDIRISH (FILL-IN-THE-BLANKS / CLOZE):\n"
+    "   - Zamonlar (Tenses), Shart mayli (Conditionals), Majhul nisbat (Passive), O'zlashtirma gap (Reported Speech), Inversiya (Inversion), Modal fe'llar jonli gaplar ichida tekshirilsin.\n"
+    "   - Gapda tekshiriladigan qism o'rniga '______' qoldiring (masalan: 'Even though she ______ in Paris for five years during her college days, she never visited the Louvre.').\n"
+    "   - Gaplarda vaqt signallari (time markers), kontekstli qarama-qarshiliklar va nozik qoidalar aks etsin.\n\n"
+    "4. YUQORI SIFATLI CHALG'ITUVCHILAR (HIGH-QUALITY DISTRACTORS):\n"
+    "   - Noto'g'ri variantlar — o'quvchilar eng ko'p adashadigan tipik xatoliklar (common learner pitfalls, confusing word pairs: affect/effect, raise/rise, borrow/lend, o'xshash zamon shakllari) bo'lsin.\n"
+    "   - Bir qarashdayoq ko'rinib turadigan, kulgili yoki qoidaga umuman aloqasiz variantlar bo'lmasin.\n\n"
+    "5. O'ZBEK TILIDAGI PEDAGOGIK IZOH (EXPLANATION):\n"
+    "   - To'g'ri javob nega to'g'riligi va qaysi qoida yoki kollokatsiya ishlagani hamda boshqa variantlar nima sababdan mos kelmasligi o'zbek tilida lo'nda (maksimal 180 belgi) tushuntirilsin.\n"
     "════════════════════════════════════════════════════════════════════\n\n"
 )
 
@@ -206,6 +279,15 @@ class GeminiService:
             text=text_content,
             filename=file_name,
         )
+        is_english = is_english_content(
+            topic=topic,
+            text=text_content,
+            filename=file_name,
+        )
+
+        english_directive_clause = ""
+        if is_english:
+            english_directive_clause = ENGLISH_PEDAGOGICAL_MASTER_DIRECTIVE
 
         grammar_formula_clause = ""
         if is_grammar_formula:
@@ -266,6 +348,7 @@ class GeminiService:
             f"5. BUTUN HUJJATNI QAMRAB OLING: Savollarni faqat hujjat boshidan emas, butun matn bo'ylab (boshi, o'rtasi, oxiri, turli darslar) aralash holda tanlang.\n"
             f"6. Til qoidasi: Agar mavzu xorijiy til (ingliz tili, rus tili va h.k.) o'rganishga oid bo'lsa, test savollari va variantlari o'sha o'rganilayotgan tilda (yoki grammatika/lug'at topshirig'i shaklida), izohi (explanation) esa o'zbek tilida tushuntirilsin. Boshqa fanlar uchun savollar to'liq o'zbek tilida bo'lsin.\n"
             f"{PEDAGOGICAL_DEPTH_DIRECTIVE}"
+            f"{english_directive_clause}"
             f"{grammar_formula_clause}"
             f"{listening_clause}"
             f"7. Javobingiz FAQAT aynan {count} ta elementdan iborat JSON array formatida bo'lsin:\n"
@@ -573,6 +656,11 @@ class GeminiService:
         }.get(difficulty, "O'rta (standart daraja)")
 
         is_grammar_formula = is_english_grammar_or_formula_content(text=text_content)
+        is_english = is_english_content(text=text_content)
+        english_batch_clause = ""
+        if is_english:
+            english_batch_clause = ENGLISH_PEDAGOGICAL_MASTER_DIRECTIVE
+
         grammar_batch_clause = ""
         if is_grammar_formula:
             grammar_batch_clause = (
@@ -676,6 +764,7 @@ class GeminiService:
                     "1. Ro'yxatdagi har bir mavzuni o'z ichiga olgan alohida obyekt tuzing.\n"
                     "2. 'topic_title' aynan o'sha mavzu nomi bo'lsin.\n"
                     f"{PEDAGOGICAL_DEPTH_DIRECTIVE}"
+                    f"{english_batch_clause}"
                     f"{grammar_batch_clause}"
                     "3. Javobingiz FAQAT JSON ro'yxati formatida bo'lsin:\n"
                     "[\n"
@@ -748,6 +837,7 @@ class GeminiService:
             "3. Savollar va variantlar o'sha mavzuning lug'ati va faktlariga mos bo'lsin.\n"
             "4. Har bir savolda 'question', 'options', 'correct_id' (0 dan boshlanadi), va 'explanation' bo'lsin.\n"
             f"{PEDAGOGICAL_DEPTH_DIRECTIVE}"
+            f"{english_batch_clause}"
             f"{grammar_batch_clause}"
             "5. Javobingiz FAQAT quyidagi JSON ro'yxati formatida bo'lsin:\n"
             "[\n"

@@ -24,7 +24,11 @@ from keyboards.inline_keyboards import (
     get_quiz_timer_keyboard,
     get_quiz_card_keyboard,
 )
-from services.gemini_service import GeminiService, is_english_grammar_or_formula_content
+from services.gemini_service import (
+    GeminiService,
+    is_english_grammar_or_formula_content,
+    is_english_content,
+)
 from services.quiz_service import (
     extract_text_from_file,
     get_offline_quiz_questions,
@@ -165,11 +169,17 @@ async def process_document_message(message: Message, bot: Bot, state: FSMContext
         clean_title = os.path.splitext(file_name)[0][:35]
 
         is_grammar = is_english_grammar_or_formula_content(topic=clean_title, text=text_content, filename=file_name)
+        is_en = is_english_content(topic=clean_title, text=text_content, filename=file_name)
         grammar_notice = ""
         if is_grammar:
             grammar_notice = (
                 "\n\n🇬🇧 <b>Ingliz tili grammatika/formula hujjati aniqlandi!</b>\n"
-                "<i>AI formulalar asosida amaliy gaplar tuzib, tushib qolgan so‘zni topish (fill-in-the-blank, masalan: He ______ watching TV -> am/is/are) shaklida testlar tuzadi.</i>"
+                "<i>AI formulalar asosida amaliy gaplar tuzib, tushib qolgan so‘zni topish (fill-in-the-blank) shaklida chuqur testlar tuzadi.</i>"
+            )
+        elif is_en:
+            grammar_notice = (
+                "\n\n🇬🇧 <b>Ingliz tili (Cambridge / CEFR standarti) aniqlandi!</b>\n"
+                "<i>AI sayoz savollar tuzmaydi — boy amaliy kontekst, kollokatsiyalar va qoidalar asosida sifatli testlar tuziladi.</i>"
             )
 
         caption = (message.caption or "").lower()
@@ -717,7 +727,8 @@ async def process_plain_text(message: Message, state: FSMContext) -> None:
         return
 
     is_grammar = is_english_grammar_or_formula_content(topic=text, text=text)
-    if is_grammar:
+    is_en = is_english_content(topic=text, text=text)
+    if is_grammar or is_en:
         clean_topic = clean_topic_input(text)
         title = clean_topic[:35]
         save_user_media(message.from_user.id, text_content=text)
@@ -776,9 +787,16 @@ async def start_quiz_wizard(
         text=text_content,
         filename=file_name,
     )
+    is_en = is_english_content(
+        topic=topic or source_label,
+        text=text_content,
+        filename=file_name,
+    )
     grammar_note = ""
     if is_grammar:
-        grammar_note = "\n💡 <i>Ingliz tili formulalari asosida gap to‘ldirish (fill-in-the-blank) savollari tuziladi.</i>\n"
+        grammar_note = "\n💡 <i>Ingliz tili formulalari asosida amaliy gap to‘ldirish savollari tuziladi.</i>\n"
+    elif is_en:
+        grammar_note = "\n🇬🇧 <i>Ingliz tili: Cambridge/CEFR darajasidagi chuqur amaliy kontekstli testlar tuziladi.</i>\n"
 
     text = (
         "✦ • ──────────────────── • ✦\n"
