@@ -4,6 +4,7 @@ import time
 from typing import Any
 import aiosqlite
 from config import DB_PATH
+from services.cloud_sync import trigger_cloud_sync_background, mark_db_dirty
 
 logger = logging.getLogger(__name__)
 
@@ -186,6 +187,7 @@ async def save_quiz(
 
         await db.commit()
     await increment_user_tests_created(user_id)
+    trigger_cloud_sync_background()
 
 
 async def get_quiz(quiz_id: str) -> dict[str, Any] | None:
@@ -252,6 +254,7 @@ async def save_attempt(
         """, (correct_count, total_count, user_id))
 
         await db.commit()
+        mark_db_dirty()
         return attempt_id
 
 

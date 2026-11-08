@@ -12,6 +12,7 @@ from aiogram.types import BotCommand
 
 from config import BOT_TOKEN
 from database.db import init_db
+from services.cloud_sync import download_cloud_db, cloud_sync_worker
 from handlers import (
     common,
     quiz_create,
@@ -90,6 +91,12 @@ async def main() -> None:
         return
 
     logger.info("Ma'lumotlar bazasi ishga tushirilmoqda...")
+    # Cloud bazadan tiklash (Render har restart bo'lganda o'chib ketmasligi uchun)
+    try:
+        await download_cloud_db()
+    except Exception as sync_err:
+        logger.warning("Cloud bazani yuklab olishda ogohlantirish: %s", sync_err)
+
     await init_db()
 
     web_runner = None
@@ -148,11 +155,14 @@ async def main() -> None:
         logger.info("Bot muvaffaqiyatli ishga tushdi: @%s (%s)", bot_info.username, bot_info.first_name)
 
         scheduler_task = asyncio.create_task(channel_scheduler_worker(bot))
+        cloud_sync_task = asyncio.create_task(cloud_sync_worker(180))
 
         # Webhookni tozalash va to'xtab turgan yangilanishlarni qabul qilish
         await bot.delete_webhook(drop_pending_updates=False)
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     finally:
+        if 'cloud_sync_task' in locals() and cloud_sync_task:
+            cloud_sync_task.cancel()
         if scheduler_task:
             scheduler_task.cancel()
         if keep_alive_task:

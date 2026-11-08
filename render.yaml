@@ -14,3 +14,7 @@ services:
         sync: false
       - key: DEFAULT_MODEL
         value: gemini-3.5-flash-lite
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: GITHUB_DATA_REPO
+        value: eshpolatovozod7-art/quiz-bot-data
