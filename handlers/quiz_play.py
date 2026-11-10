@@ -73,8 +73,6 @@ def format_quiz_ready_text(
     count = quiz.get("question_count", len(questions))
     tm = quiz.get("timer_seconds", 15)
     tm_str = f"{tm} soniya" if (tm and tm > 0) else "15 soniya"
-    quiz_id = quiz.get("quiz_id", "")
-    share_link = f"https://t.me/{bot_username}?start=quiz_{quiz_id}" if quiz_id else ""
 
     diff = quiz.get("difficulty", "medium")
     diff_labels = {
@@ -98,14 +96,12 @@ def format_quiz_ready_text(
             f"Uni to‘xtatish uchun /stop buyrug‘ini yuboring."
         )
 
-    link_section = f"\n\n🔗 <b>Test havolasi (boshqalarga ulashish uchun):</b>\n<code>{share_link}</code>" if share_link else ""
     return (
         f"🎲 <b>“{title}”</b>\n\n"
         f"🗡 {count} ta savol{opts_str}\n"
         f"🎚 Qiyinlik darajasi: {diff_str}\n"
         f"⏱ Guruhda: {tm_str} · Shaxsiyda: Cheklovsiz\n"
-        f"🏛 Ovozlar test egasiga ko‘rinadigan bo‘ladi"
-        f"{link_section}\n\n"
+        f"🏛 Ovozlar test egasiga ko‘rinadigan bo‘ladi\n\n"
         f"<i>Testni boshlash, do‘stlarga ulashish yoki guruhga qo‘shish uchun quyidagi tugmalardan foydalaning:</i> 👇"
     )
 
@@ -115,9 +111,6 @@ def format_quiz_single_ready_text(quiz: dict[str, Any], bot_username: str = "qui
     title = html.escape(quiz.get("title", "Test"), quote=False)
     questions = quiz.get("questions", [])
     count = quiz.get("question_count", len(questions))
-    quiz_id = quiz.get("quiz_id", "")
-    share_link = f"https://t.me/{bot_username}?start=quiz_{quiz_id}" if quiz_id else ""
-    link_section = f"\n\n🔗 <b>Test havolasi (ulashish uchun):</b>\n<code>{share_link}</code>" if share_link else ""
 
     diff = quiz.get("difficulty", "medium")
     diff_labels = {
@@ -135,8 +128,7 @@ def format_quiz_single_ready_text(quiz: dict[str, Any], bot_username: str = "qui
         f"🗡 {count} ta savol{opts_str}\n"
         f"🎚 Qiyinlik darajasi: {diff_str}\n"
         f"⏱ O‘z sur’atingizda (savol belgilanishi bilan keyingisiga o‘tadi)\n"
-        f"🏛 Ovozlar test egasiga ko‘rinadigan bo‘ladi"
-        f"{link_section}\n\n"
+        f"🏛 Ovozlar test egasiga ko‘rinadigan bo‘ladi\n\n"
         f"🏁 Tayyor bo‘lganingizda quyidagi tugmani bosing.\n"
         f"Uni to‘xtatish uchun /stop buyrug‘ini yuboring."
     )
@@ -1151,16 +1143,13 @@ async def finish_quiz(session_key: int, bot: Bot) -> None:
 
     bot_info = await bot.get_me()
     bot_username = bot_info.username or "quiz_tuzdimbot"
-    share_link = f"https://t.me/{bot_username}?start=quiz_{quiz_id}"
 
     clean_title = html.escape(title, quote=False)
     result_text = (
         f"🏁 <b>“{clean_title}” testi yakunlandi!</b>\n\n"
         f"📊 Natijangiz: {total} ta savoldan <b>{correct}</b> tasiga to‘g‘ri javob berdingiz (<b>{pct}%</b>)\n"
         f"⏱ Sarflangan vaqt: <b>{time_str}</b>\n\n"
-        f"{grade}\n\n"
-        f"🔗 <b>Ushbu testni boshqalarga ulashish havolasi:</b>\n"
-        f"<code>{share_link}</code>"
+        f"{grade}"
     )
 
     await bot.send_message(

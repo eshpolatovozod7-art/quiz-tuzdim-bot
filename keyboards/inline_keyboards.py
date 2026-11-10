@@ -379,10 +379,6 @@ def get_quiz_card_keyboard(
             ]
         )
 
-    import urllib.parse
-    share_text = f"🎲 «{title}» testini ishlang! Test tuzdim bot orqali tayyorlangan." if title else "🎲 Ushbu testni ishlang! Test tuzdim bot orqali tayyorlangan."
-    share_url = f"https://t.me/share/url?url=https://t.me/{bot_username}?start=quiz_{quiz_id}&text={urllib.parse.quote(share_text)}"
-
     if not full_menu:
         return InlineKeyboardMarkup(
             inline_keyboard=[
@@ -395,7 +391,7 @@ def get_quiz_card_keyboard(
                 [
                     InlineKeyboardButton(
                         text="📤 Do'stlarga ulashish",
-                        url=share_url,
+                        switch_inline_query=f"quiz_{quiz_id}",
                     ),
                     InlineKeyboardButton(
                         text="👥 Guruhda boshlash",
@@ -432,7 +428,7 @@ def get_quiz_card_keyboard(
         [
             InlineKeyboardButton(
                 text="📤 Do'stlarga ulashish",
-                url=share_url,
+                switch_inline_query=f"quiz_{quiz_id}",
             ),
             InlineKeyboardButton(
                 text="👥 Guruhda testni boshlash",
@@ -500,7 +496,6 @@ def get_quiz_finish_keyboard(
     **kwargs: Any,
 ) -> InlineKeyboardMarkup:
     """Test yakunlanganda natijalar klaviaturasi (ulashish, qayta ishlash, sertifikat)."""
-    import urllib.parse
     rows = []
     if percentage >= 70 or (total > 0 and correct >= total * 0.7):
         rows.append([
@@ -510,13 +505,10 @@ def get_quiz_finish_keyboard(
             )
         ])
 
-    share_msg = f"🎲 Men «{title}» testida {total} tadan {correct} ta to'g'ri topdim ({percentage}%)! Siz ham bilimingizni sinab ko'ring:" if title else "🎲 Ushbu testni ishlang va bilimingizni sinab ko'ring:"
-    share_url = f"https://t.me/share/url?url=https://t.me/{bot_username}?start=quiz_{quiz_id}&text={urllib.parse.quote(share_msg)}"
-
     rows.append([
         InlineKeyboardButton(
             text="📤 Do'stlarga ulashish",
-            url=share_url,
+            switch_inline_query=f"quiz_{quiz_id}",
         ),
         InlineKeyboardButton(
             text="👥 Guruhda o'ynash",

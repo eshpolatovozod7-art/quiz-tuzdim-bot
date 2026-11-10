@@ -5,7 +5,6 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 from aiogram.filters import CommandStart, Command, CommandObject
 from aiogram.fsm.context import FSMContext
 
-import urllib.parse
 from database.db import (
     register_or_update_user,
     get_user_stats,
@@ -61,9 +60,6 @@ async def handle_start(message: Message, command: CommandObject, bot: Bot, state
             bot_info = await bot.get_me()
             bot_username = bot_info.username or "quiz_tuzdimbot"
             text = format_quiz_single_ready_text(quiz, bot_username=bot_username)
-            q_title = quiz.get("title", "Test")
-            share_text = f"🎲 «{q_title}» testini ishlang! Test tuzdim bot orqali tayyorlangan."
-            share_url = f"https://t.me/share/url?url=https://t.me/{bot_username}?start=quiz_{quiz_id}&text={urllib.parse.quote(share_text)}"
 
             kb = InlineKeyboardMarkup(
                 inline_keyboard=[
@@ -76,7 +72,7 @@ async def handle_start(message: Message, command: CommandObject, bot: Bot, state
                     [
                         InlineKeyboardButton(
                             text="📤 Do'stlarga ulashish",
-                            url=share_url,
+                            switch_inline_query=f"quiz_{quiz_id}",
                         ),
                         InlineKeyboardButton(
                             text="👥 Guruhda o'ynash",
