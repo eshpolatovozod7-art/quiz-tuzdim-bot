@@ -2,6 +2,7 @@ import io
 import logging
 import os
 import random
+import re
 import time
 from typing import Any
 
@@ -645,13 +646,126 @@ def extract_text_from_file(file_bytes: bytes, filename: str, max_chars: int = 25
     return text.strip()
 
 
+def parse_vocabulary_pairs(text: str) -> list[tuple[str, str]]:
+    """Matndan so'z-tarjima juftliklarini ajratib olish (lug'at ro'yxati)."""
+    if not text:
+        return []
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    splitter = re.compile(r"\s*(?:->|=>|[-–—:=•/|]|\t|\s{2,}|\s+-\s+)\s*")
+    clean_prefix = re.compile(r"^[\d+•\-\*]+[\.\)]?\s*")
+    transcription_pat = re.compile(r"\[.*?\]|\(.*?\)")
+    pairs: list[tuple[str, str]] = []
+    for line in lines:
+        parts = splitter.split(line, maxsplit=1)
+        if len(parts) == 2:
+            left = clean_prefix.sub("", parts[0])
+            left = transcription_pat.sub("", left).strip(" \"'.,;")
+            right = transcription_pat.sub("", parts[1]).strip(" \"'.,;")
+            if left and right and len(left) <= 60 and len(right) <= 80:
+                pairs.append((left, right))
+        elif len(parts) == 1:
+            # Agar chiziqcha yoki maxsus belgisiz, masalan "water suv" yozilgan bo'lsa
+            tokens = clean_prefix.sub("", parts[0]).split()
+            if len(tokens) == 2:
+                left = tokens[0].strip(" \"'.,;")
+                right = tokens[1].strip(" \"'.,;")
+                if left and right and len(left) <= 40 and len(right) <= 40:
+                    pairs.append((left, right))
+    return pairs
+
+
+def generate_vocabulary_quiz_from_pairs(
+    pairs: list[tuple[str, str]],
+    count: int = 5,
+    options_count: int = 4,
+    used_questions: set[str] | None = None,
+) -> list[dict[str, Any]]:
+    """Lug'at juftliklaridan sodda boshlang'ich (Beginner) test savollarini shakllantirish."""
+    if not pairs:
+        return []
+
+    available_pairs = list(pairs)
+    random.shuffle(available_pairs)
+
+    all_lefts = [p[0] for p in pairs]
+    all_rights = [p[1] for p in pairs]
+
+    questions: list[dict[str, Any]] = []
+    pair_idx = 0
+
+    for i in range(count):
+        pair = available_pairs[pair_idx % len(available_pairs)]
+        pair_idx += 1
+        w1, w2 = pair
+
+        # Navbatma-navbat: inglizcha -> o'zbekcha yoki o'zbekcha -> inglizcha
+        ask_left_to_right = (i % 2 == 0)
+
+        if ask_left_to_right:
+            target_word = w1
+            correct_ans = w2
+            other_pool = [r for r in all_rights if r.lower() != correct_ans.lower()]
+            q_template = random.choice([
+                f"«{target_word}» so'zining ma'nosi nima?",
+                f"«{target_word}» so'zining to'g'ri tarjimasini toping:",
+                f"«{target_word}» so'zi qanday tarjima qilinadi?",
+            ])
+            explanation = f"💡 {target_word} — {correct_ans} degani."
+        else:
+            target_word = w2
+            correct_ans = w1
+            other_pool = [l for l in all_lefts if l.lower() != correct_ans.lower()]
+            q_template = random.choice([
+                f"«{target_word}» so'zining inglizcha tarjimasi qaysi?",
+                f"«{target_word}» so'zi ingliz tilida nima deyiladi?",
+                f"To'g'ri inglizcha tarjimani tanlang: «{target_word}»",
+            ])
+            explanation = f"💡 {correct_ans} — {target_word} degani."
+
+        distractors: list[str] = []
+        if len(other_pool) >= options_count - 1:
+            distractors = random.sample(other_pool, options_count - 1)
+        else:
+            distractors = list(other_pool)
+            default_fillers = ["water", "apple", "book", "car", "house", "suv", "olma", "kitob", "mashina", "uy"]
+            for filler in default_fillers:
+                if len(distractors) >= options_count - 1:
+                    break
+                if filler.lower() != correct_ans.lower() and filler not in distractors:
+                    distractors.append(filler)
+
+        opts = [correct_ans] + distractors[: options_count - 1]
+        random.shuffle(opts)
+        c_id = opts.index(correct_ans)
+
+        questions.append({
+            "question": q_template,
+            "options": opts,
+            "correct_id": c_id,
+            "explanation": explanation,
+        })
+
+    return questions
+
+
 def get_offline_quiz_questions(
     topic: str,
     count: int = 5,
     options_count: int = 4,
     used_questions: set[str] | None = None,
+    text_content: str | None = None,
 ) -> list[dict[str, Any]]:
     """Mavzuga mos oflayn zaxira savollarni olish va variantlarni aralashtirish."""
+    # Agar matnda lug'at ro'yxati (vocabulary) bo'lsa, to'g'ridan-to'g'ri o'sha so'zlardan savol tuzish
+    if text_content:
+        pairs = parse_vocabulary_pairs(text_content)
+        if len(pairs) >= 2:
+            return generate_vocabulary_quiz_from_pairs(
+                pairs=pairs,
+                count=count,
+                options_count=options_count,
+                used_questions=used_questions,
+            )
     lower = (topic or "").lower()
     cat = "umumiy"
     if any(k in lower for k in ["matem", "algebra", "hisob", "geometr", "integral", "kvadrat tenglama", "kasr", "progressiya"]):

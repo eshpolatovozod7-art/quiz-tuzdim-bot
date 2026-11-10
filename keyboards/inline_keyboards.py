@@ -89,7 +89,8 @@ def get_exam_presets_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="🎧 IELTS Listening Audio Test", callback_data="qtop:IELTS Listening Comprehension Audio Test"),
             ],
             [
-                InlineKeyboardButton(text="🔙 Bosh menyu", callback_data="menu:home"),
+                InlineKeyboardButton(text="🔙 Ortga", callback_data="menu:topic"),
+                InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="menu:home"),
             ],
         ]
     )
@@ -203,6 +204,9 @@ def get_popular_topics_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(text="✏️ O'z mavzuyimni yozaman", callback_data="menu:custom_topic"),
+            ],
+            [
+                InlineKeyboardButton(text="🏛 DTM / Milliy Sertifikat / CEFR", callback_data="menu:presets"),
             ],
             [
                 InlineKeyboardButton(text="📐 Matematika", callback_data="qfan:matematika"),

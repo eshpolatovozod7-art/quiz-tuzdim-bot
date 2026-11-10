@@ -17,6 +17,7 @@ from keyboards.inline_keyboards import (
     get_back_to_menu_keyboard,
     get_popular_topics_keyboard,
     get_subtopics_keyboard,
+    get_exam_presets_keyboard,
     FAN_TOPICS,
     get_quiz_count_keyboard,
     get_quiz_options_keyboard,
@@ -28,6 +29,7 @@ from services.gemini_service import (
     GeminiService,
     is_english_grammar_or_formula_content,
     is_english_content,
+    is_vocabulary_content,
 )
 from services.quiz_service import (
     extract_text_from_file,
@@ -79,7 +81,7 @@ def clean_topic_input(text: str) -> str:
     return cleaned if cleaned else text.strip()
 
 
-@router.callback_query(F.data.in_(["menu:topic", "menu:presets"]))
+@router.callback_query(F.data == "menu:topic")
 async def handle_menu_topic(callback: CallbackQuery, state: FSMContext) -> None:
     """Mavzu bo'yicha test tuzish."""
     await state.set_state(QuizCreateState.waiting_topic)
@@ -87,12 +89,51 @@ async def handle_menu_topic(callback: CallbackQuery, state: FSMContext) -> None:
     text = (
         "✍️ <b>Mavzu bo‘yicha test tuzish:</b>\n\n"
         "1️⃣ <b>O‘z mavzuingizni yozishingiz mumkin:</b>\n"
-        "Chatga istalgan mavzuni yozib yuboring yoki quyidagi «✏️ O'z mavzuyimni yozaman» tugmasini bosing.\n"
-        "<i>(Masalan: Nyuton qonunlari, Present Continuous, Alisher Navoiy, Kvadrat tenglamalar...)</i>\n\n"
-        "2️⃣ <b>Yoki tayyor fanlardan birini tanlang:</b> 👇"
+        "Chatga istalgan mavzu, sinf yoki darajani yozib yuboring (yoki quyidagi «✏️ O'z mavzuyimni yozaman» tugmasini bosing).\n"
+        "<i>(Masalan: Nyuton qonunlari, Present Continuous A2, DTM Matematika, 8-sinf Kimyo, Ingliz tili lug'at...)</i>\n\n"
+        "2️⃣ <b>Yoki tayyor yo'nalishlardan birini tanlang:</b> 👇"
     )
     if callback.message:
         await callback.message.edit_text(text, reply_markup=get_popular_topics_keyboard(), parse_mode="HTML")
+
+
+@router.callback_query(F.data == "menu:presets")
+async def handle_menu_presets(callback: CallbackQuery, state: FSMContext) -> None:
+    """DTM, IELTS va Milliy Sertifikat maxsus shablonlari."""
+    await callback.answer()
+    text = (
+        "🏛 <b>DTM, Milliy Sertifikat va Xalqaro Imtihonlar shablonlari:</b>\n\n"
+        "Rasmiy imtihon standartlari asosida tayyorlangan yo'nalishlardan birini tanlang:\n\n"
+        "👇 <i>Kerakli imtihon blokini tanlang:</i>"
+    )
+    if callback.message:
+        await callback.message.edit_text(text, reply_markup=get_exam_presets_keyboard(), parse_mode="HTML")
+
+
+@router.callback_query(F.data.in_(["menu:source", "menu:files"]))
+async def handle_menu_source(callback: CallbackQuery, state: FSMContext) -> None:
+    """Manba (fayl/hujjat/rasm/audio/video/havola/matn) orqali test tuzish yo'riqnomasi."""
+    await state.set_state(QuizCreateState.waiting_document)
+    await callback.answer()
+    text = (
+        "📁 <b>Manba orqali test tuzish:</b>\n\n"
+        "Chatga quyidagi manbalardan birini <b>to‘g‘ridan-to‘g‘ri yuboring</b>:\n\n"
+        "• 📄 <b>PDF yoki Word (.docx)</b> — darslik, qo‘llanma yoki konspekt\n"
+        "• 📸 <b>Rasm / Fotosurat</b> — kitob sahifasi, daftar konspekti yoki doska fotosi\n"
+        "• 🎙 <b>Ovozli xabar / Audio</b> — ma'ruza yozuvi (MP3, OGG, WAV)\n"
+        "• 🎥 <b>Video</b> — video darslik yoki video xabar\n"
+        "• 📋 <b>Matn yoki Lug'at (Vocabulary)</b> — konspekt matni yoki so'zlar ro'yxati (masalan: <i>word - translation</i>)\n"
+        "• 🔗 <b>YouTube yoki maqola havolasi</b>\n\n"
+        "<i>Sun'iy intellekt manbadagi faktlar va qoidalar asosida yuqori sifatli test tuzib beradi!</i>\n\n"
+        "👇 <b>Fayl, rasm, audio yoki matnni hozir chatga tashlang:</b>"
+    )
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Ortga", callback_data="menu:create")]
+        ]
+    )
+    if callback.message:
+        await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
 
 
 @router.callback_query(F.data.startswith("menu:custom_topic"))
@@ -108,21 +149,22 @@ async def handle_custom_topic(callback: CallbackQuery, state: FSMContext) -> Non
     if fan_title:
         text = (
             f"✏️ <b>{fan_title} bo‘yicha o‘z mavzuingizni yozing:</b>\n\n"
-            f"O‘zingiz istagan aniq mavzu, bo‘lim yoki qoida nomini <b>chatga yozib yuboring</b>:\n\n"
-            f"<i>Sun'iy intellekt xuddi ustozlarday ushbu mavzu bo‘yicha chuqur va sifatli test tuzib beradi!</i> 👇"
+            f"O‘zingiz istagan aniq mavzu, bo‘lim, sinf yoki daraja nomini <b>chatga yozib yuboring</b>:\n\n"
+            f"<i>Sun'iy intellekt xuddi ustozlarday ushbu mavzu va daraja bo‘yicha chuqur test tuzib beradi!</i> 👇"
         )
     else:
         text = (
             "✏️ <b>O‘z mavzuingizni yozing:</b>\n\n"
-            "Istalgan mavzu, fan yoki yo‘nalish nomini <b>chatga yozib yuboring</b>:\n\n"
-            "<i>Masalan:</i>\n"
-            "• <code>Present Continuous va zamonlar</code>\n"
-            "• <code>Nyutonning 3-qonuni va dinamika</code>\n"
-            "• <code>Kvadrat tenglamalar va Viyet formulasi</code>\n"
-            "• <code>Alisher Navoiy hayoti va Xamsa</code>\n"
-            "• <code>O'zbekiston iqtisodiyoti va investitsiyalar</code>\n"
-            "• <code>Python dasturlash: Funksiyalar va OOP</code>\n\n"
-            "<i>Marhamat, mavzuni chatga yozing:</i> 👇"
+            "Istalgan mavzu, fan, sinf yoki darajani <b>chatga yozib yuboring</b>:\n\n"
+            "<i>Namunalar:</i>\n"
+            "• <code>Present Continuous (A2 daraja)</code>\n"
+            "• <code>B2-C1 Advanced Vocabulary (lug'at)</code>\n"
+            "• <code>8-sinf Fizika: Nyuton qonunlari</code>\n"
+            "• <code>10-sinf Kimyo: Kovalent bog'lanish</code>\n"
+            "• <code>DTM Matematika: Kvadrat tenglamalar</code>\n"
+            "• <code>Python dasturlash: OOP va Funksiyalar</code>\n\n"
+            "💡 <b>Eslatma:</b> Ingliz tilidan so‘zlar ro‘yxatini (lug‘at) yuborsangiz, AI so‘zlardan quruq tarjima emas, darajaga mos gaplar tuzib, bo‘sh o‘rinni to‘ldirish testlarini tayyorlaydi!\n\n"
+            "<i>Marhamat, mavzuni yoki so‘zlarni chatga yozing:</i> 👇"
         )
     back_target = f"qfan:{fan_key}" if fan_key else "menu:topic"
     back_kb = InlineKeyboardMarkup(
@@ -169,6 +211,16 @@ async def handle_topic_preset(callback: CallbackQuery, state: FSMContext) -> Non
 @router.message(QuizCreateState.waiting_topic, F.text & ~F.text.startswith("/"))
 async def process_topic_text(message: Message, state: FSMContext) -> None:
     raw_topic = message.text.strip()
+    if is_vocabulary_content(text=raw_topic):
+        save_user_media(message.from_user.id, text_content=raw_topic)
+        await start_quiz_wizard(
+            message, state,
+            text_content=raw_topic,
+            label="Lug'at (Vocabulary)",
+            source_type="text",
+            user_id=message.from_user.id,
+        )
+        return
     clean_topic = clean_topic_input(raw_topic)
     clear_user_media(message.from_user.id)
     await start_quiz_wizard(message, state, topic=clean_topic, label=clean_topic, source_type="topic", user_id=message.from_user.id)
@@ -177,9 +229,16 @@ async def process_topic_text(message: Message, state: FSMContext) -> None:
 @router.message(QuizCreateState.waiting_text, F.text)
 async def process_custom_text(message: Message, state: FSMContext) -> None:
     text_content = message.text.strip()
-    title = text_content[:30].replace("\n", " ").strip() + "..."
+    is_vocab = is_vocabulary_content(text=text_content)
+    title = "Lug'at (Vocabulary)" if is_vocab else (text_content[:30].replace("\n", " ").strip() + "...")
     save_user_media(message.from_user.id, text_content=text_content)
-    await start_quiz_wizard(message, state, text_content=text_content, label=title, user_id=message.from_user.id)
+    await start_quiz_wizard(
+        message, state,
+        text_content=text_content,
+        label=title,
+        source_type="text",
+        user_id=message.from_user.id,
+    )
 
 
 @router.message(F.document)
@@ -215,10 +274,16 @@ async def process_document_message(message: Message, bot: Bot, state: FSMContext
         save_user_media(message.from_user.id, file_bytes, file_name, doc.mime_type or "application/pdf", text_content=text_content)
         clean_title = os.path.splitext(file_name)[0][:35]
 
+        is_vocab = is_vocabulary_content(topic=clean_title, text=text_content, filename=file_name)
         is_grammar = is_english_grammar_or_formula_content(topic=clean_title, text=text_content, filename=file_name)
         is_en = is_english_content(topic=clean_title, text=text_content, filename=file_name)
         grammar_notice = ""
-        if is_grammar:
+        if is_vocab:
+            grammar_notice = (
+                "\n\n📖 <b>Ingliz tili lug'ati (Vocabulary) aniqlandi!</b>\n"
+                "<i>Beginner darajada sodda so'z-tarjima (masalan: suv nima -> water), yuqori darajada esa kontekstli testlar tuziladi.</i>"
+            )
+        elif is_grammar:
             grammar_notice = (
                 "\n\n🇬🇧 <b>Ingliz tili grammatika/formula hujjati aniqlandi!</b>\n"
                 "<i>AI formulalar asosida amaliy gaplar tuzib, tushib qolgan so‘zni topish (fill-in-the-blank) shaklida chuqur testlar tuzadi.</i>"
@@ -398,6 +463,36 @@ async def handle_batch_count(callback: CallbackQuery, state: FSMContext) -> None
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
             [
+                InlineKeyboardButton(text="🟢 Oson (Boshlang'ich)", callback_data="qbatch:diff:easy"),
+                InlineKeyboardButton(text="🟡 O'rta (Standart)", callback_data="qbatch:diff:medium"),
+            ],
+            [
+                InlineKeyboardButton(text="🔴 Qiyin (Murakkab)", callback_data="qbatch:diff:hard"),
+                InlineKeyboardButton(text="🏆 Olimpiada (Ekspert)", callback_data="qbatch:diff:olympiad"),
+            ],
+            [
+                InlineKeyboardButton(text="🔙 Bekor qilish", callback_data="menu:home"),
+            ],
+        ]
+    )
+    if callback.message:
+        await callback.message.edit_text(
+            f"🎚 <b>Har bir mavzu uchun testlarning qiyinlik darajasini tanlang:</b>\n\n"
+            f"<i>Sun'iy intellekt savol gaplarini aynan shu darajadagi so‘z boyligi va grammatikaga moslab tuzadi.</i> 👇",
+            reply_markup=kb,
+            parse_mode="HTML",
+        )
+
+
+@router.callback_query(F.data.startswith("qbatch:diff:"))
+async def handle_batch_diff(callback: CallbackQuery, state: FSMContext) -> None:
+    diff = callback.data.split(":")[2]
+    await state.update_data(batch_diff=diff)
+    diff_title = {"easy": "Oson", "medium": "O'rta", "hard": "Qiyin", "olympiad": "Olimpiada"}.get(diff, "O'rta")
+    await callback.answer(f"{diff_title} daraja tanlandi")
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
                 InlineKeyboardButton(text="⚡️ 10 soniya", callback_data="qbatch:tm:10"),
                 InlineKeyboardButton(text="⏱ 15 soniya", callback_data="qbatch:tm:15"),
             ],
@@ -423,6 +518,7 @@ async def handle_batch_timer(callback: CallbackQuery, bot: Bot, state: FSMContex
     tm = int(callback.data.split(":")[2])
     data = await state.get_data()
     cnt = data.get("batch_count", 5)
+    diff = data.get("batch_diff", "medium")
     text_content = data.get("doc_text") or data.get("batch_text") or ""
     clean_title = data.get("doc_title") or data.get("batch_title") or "Hujjat"
     user_id = callback.from_user.id
@@ -454,7 +550,7 @@ async def handle_batch_timer(callback: CallbackQuery, bot: Bot, state: FSMContex
         text_content=text_content,
         questions_per_topic=cnt,
         options_count=4,
-        difficulty="medium",
+        difficulty=diff,
     )
 
     if not topics_data:
@@ -490,7 +586,7 @@ async def handle_batch_timer(callback: CallbackQuery, bot: Bot, state: FSMContex
             questions=t_questions,
             options_count=4,
             timer_seconds=tm,
-            difficulty="medium",
+            difficulty=diff,
             batch_id=new_batch_id,
             batch_title=new_batch_title,
         )
@@ -780,7 +876,11 @@ async def process_plain_text(message: Message, state: FSMContext) -> None:
         )
         return
 
-    if len(text) > 200:
+    if is_vocabulary_content(text=text):
+        title = "Lug'at (Vocabulary)"
+        save_user_media(message.from_user.id, text_content=text)
+        await start_quiz_wizard(message, state, text_content=text, label=title, source_type="text", user_id=message.from_user.id)
+    elif len(text) > 200:
         # Uzun matn bo'lsa (maqola, konspekt), matn manbasi sifatida qabul qilamiz
         title = text[:35].replace("\n", " ").strip() + "..."
         save_user_media(message.from_user.id, text_content=text)
@@ -807,6 +907,8 @@ async def start_quiz_wizard(
     user_id: int | None = None,
 ) -> None:
     """Sozlamalar wizardini boshlash."""
+    if text_content and not topic and source_type == "topic":
+        source_type = "text"
     source_label = label or topic or file_name or "Mavzu"
     await state.update_data(
         quiz_topic=topic,
@@ -832,11 +934,19 @@ async def start_quiz_wizard(
         text=text_content,
         filename=file_name,
     )
+    is_vocab = is_vocabulary_content(
+        topic=topic or source_label,
+        text=text_content,
+        filename=file_name,
+    )
+
     grammar_note = ""
-    if is_grammar:
+    if is_vocab:
+        grammar_note = "\n📖 <i>Ingliz tili so‘zlar ro‘yxati (vocabulary) aniqlandi! Beginner darajada sodda so'z-tarjima (masalan: suv nima -> water), yuqori darajada esa kontekstli testlar tuziladi.</i>\n"
+    elif is_grammar:
         grammar_note = "\n💡 <i>Ingliz tili formulalari asosida amaliy gap to‘ldirish savollari tuziladi.</i>\n"
     elif is_en:
-        grammar_note = "\n🇬🇧 <i>Ingliz tili: Cambridge/CEFR darajasidagi chuqur amaliy kontekstli testlar tuziladi.</i>\n"
+        grammar_note = "\n🇬🇧 <i>Ingliz tili: Tanlangan darajadagi amaliy kontekstli chuqur testlar tuziladi.</i>\n"
 
     text = (
         "✦ • ──────────────────── • ✦\n"
@@ -954,11 +1064,19 @@ async def handle_qcfg_timer(callback: CallbackQuery, bot: Bot, state: FSMContext
 
     # Agar manba "topic" bo'lsa, keshdagi eski fayl/matn aralashmasligi kerak
     if source_type == "topic":
-        file_bytes = None
-        file_mime = None
-        file_name = None
-        text_content = None
-        topic = topic or source_label
+        if topic and is_vocabulary_content(text=topic):
+            text_content = topic
+            topic = "Lug'at (Vocabulary)"
+            source_type = "text"
+            file_bytes = None
+            file_mime = None
+            file_name = None
+        else:
+            file_bytes = None
+            file_mime = None
+            file_name = None
+            text_content = None
+            topic = topic or source_label
     else:
         cached_media = get_user_media(user_id)
         if cached_media:
@@ -986,7 +1104,7 @@ async def handle_qcfg_timer(callback: CallbackQuery, bot: Bot, state: FSMContext
     # Agar AI dan savol kelmasa -> Oflayn zaxira bazadan olish
     if not questions:
         logger.info("Gemini savol bermadi, oflayn zaxira savollardan foydalanilmoqda")
-        questions = get_offline_quiz_questions(topic or source_label, count=cnt, options_count=opts)
+        questions = get_offline_quiz_questions(topic or source_label, count=cnt, options_count=opts, text_content=text_content)
     elif len(questions) < cnt:
         # Savollar soni so'ralgandan kam bo'lsa, to'liq cnt taga yetkazish
         needed = cnt - len(questions)
@@ -998,6 +1116,7 @@ async def handle_qcfg_timer(callback: CallbackQuery, bot: Bot, state: FSMContext
             count=needed,
             options_count=opts,
             used_questions=used_now,
+            text_content=text_content,
         )
         questions.extend(extra[:needed])
 
@@ -1036,7 +1155,9 @@ async def handle_qcfg_timer(callback: CallbackQuery, bot: Bot, state: FSMContext
         "title": clean_title,
         "questions": questions,
         "question_count": len(questions),
+        "options_count": opts,
         "timer_seconds": tm,
+        "difficulty": diff,
     }
     card_text = format_quiz_ready_text(quiz_obj, bot_username=bot_username, is_group=False)
 

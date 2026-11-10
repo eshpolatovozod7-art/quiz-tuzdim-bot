@@ -76,10 +76,22 @@ def format_quiz_ready_text(
     quiz_id = quiz.get("quiz_id", "")
     share_link = f"https://t.me/{bot_username}?start=quiz_{quiz_id}" if quiz_id else ""
 
+    diff = quiz.get("difficulty", "medium")
+    diff_labels = {
+        "easy": "🟢 Oson (Boshlang'ich)",
+        "medium": "🟡 O'rta (Standart)",
+        "hard": "🔴 Qiyin (Murakkab)",
+        "olympiad": "🏆 Olimpiada (Ekspert)",
+    }
+    diff_str = diff_labels.get(diff, "🟡 O'rta (Standart)")
+    opts_cnt = quiz.get("options_count")
+    opts_str = f" · 🔘 {opts_cnt} variantli" if opts_cnt else ""
+
     if is_group:
         return (
             f"🎲 <b>“{title}” testiga tayyorlaning</b>\n\n"
-            f"🗡 {count} ta savol\n"
+            f"🗡 {count} ta savol{opts_str}\n"
+            f"🎚 Qiyinlik darajasi: {diff_str}\n"
             f"⏱ Har bir savol uchun {tm_str}\n"
             f"🏛 Ovozlar test egasiga ko‘rinadigan bo‘ladi\n\n"
             f"🏁 Tayyor bo‘lganingizda quyidagi tugmani bosing.\n"
@@ -89,7 +101,8 @@ def format_quiz_ready_text(
     link_section = f"\n\n🔗 <b>Test havolasi (boshqalarga ulashish uchun):</b>\n<code>{share_link}</code>" if share_link else ""
     return (
         f"🎲 <b>“{title}”</b>\n\n"
-        f"🗡 {count} ta savol\n"
+        f"🗡 {count} ta savol{opts_str}\n"
+        f"🎚 Qiyinlik darajasi: {diff_str}\n"
         f"⏱ Guruhda: {tm_str} · Shaxsiyda: Cheklovsiz\n"
         f"🏛 Ovozlar test egasiga ko‘rinadigan bo‘ladi"
         f"{link_section}\n\n"
@@ -105,9 +118,22 @@ def format_quiz_single_ready_text(quiz: dict[str, Any], bot_username: str = "qui
     quiz_id = quiz.get("quiz_id", "")
     share_link = f"https://t.me/{bot_username}?start=quiz_{quiz_id}" if quiz_id else ""
     link_section = f"\n\n🔗 <b>Test havolasi (ulashish uchun):</b>\n<code>{share_link}</code>" if share_link else ""
+
+    diff = quiz.get("difficulty", "medium")
+    diff_labels = {
+        "easy": "🟢 Oson (Boshlang'ich)",
+        "medium": "🟡 O'rta (Standart)",
+        "hard": "🔴 Qiyin (Murakkab)",
+        "olympiad": "🏆 Olimpiada (Ekspert)",
+    }
+    diff_str = diff_labels.get(diff, "🟡 O'rta (Standart)")
+    opts_cnt = quiz.get("options_count")
+    opts_str = f" · 🔘 {opts_cnt} variantli" if opts_cnt else ""
+
     return (
         f"🎲 <b>“{title}” testiga tayyorlaning</b>\n\n"
-        f"🗡 {count} ta savol\n"
+        f"🗡 {count} ta savol{opts_str}\n"
+        f"🎚 Qiyinlik darajasi: {diff_str}\n"
         f"⏱ O‘z sur’atingizda (savol belgilanishi bilan keyingisiga o‘tadi)\n"
         f"🏛 Ovozlar test egasiga ko‘rinadigan bo‘ladi"
         f"{link_section}\n\n"
@@ -324,6 +350,7 @@ async def handle_next_batch_quiz(callback: CallbackQuery, bot: Bot) -> None:
             count=count,
             options_count=options_count,
             used_questions=used_q,
+            text_content=text_content,
         )
     elif len(questions) < count:
         needed = count - len(questions)
@@ -334,6 +361,7 @@ async def handle_next_batch_quiz(callback: CallbackQuery, bot: Bot) -> None:
             count=needed,
             options_count=options_count,
             used_questions=used_now,
+            text_content=text_content,
         )
         questions.extend(extra[:needed])
 

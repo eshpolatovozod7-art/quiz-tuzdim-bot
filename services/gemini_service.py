@@ -126,6 +126,57 @@ def is_english_grammar_or_formula_content(
     return False
 
 
+def is_beginner_difficulty(difficulty: str | None) -> bool:
+    """Qiyinlik darajasi boshlang'ich / oson ekanligini tekshirish."""
+    diff = (difficulty or "medium").lower()
+    return diff in ("easy", "beginner", "oson", "elementary", "a1", "a2", "boshlang'ich", "boshlangich")
+
+
+def is_vocabulary_content(
+    topic: str | None = None,
+    text: str | None = None,
+    filename: str | None = None,
+) -> bool:
+    """Foydalanuvchi ingliz tili lug'at ro'yxati (vocabulary list / word - translation) yuborganini aniqlash."""
+    combined = f"{topic or ''} {filename or ''}".lower()
+    vocab_keywords = [
+        "vocabulary", "vocablry", "vocab", "lug'at", "lugat", "lug‘at", "lug`at",
+        "words list", "word list", "wordlist", "words", "word",
+        "so'zlar ro'yxati", "sozlar royxati", "so'zlar", "sozlar", "so'z", "soz",
+        "so'z boyligi", "soz boyligi", "phrasal verbs", "idioms",
+        "essential words", "inglizcha so'z", "english words",
+        "tarjima", "tarjimalar", "dictionary", "glossary", "lexis"
+    ]
+    if any(k in combined for k in vocab_keywords):
+        return True
+
+    if not text:
+        return False
+
+    raw_text = text.strip()
+    if any(k in raw_text[:500].lower() for k in vocab_keywords):
+        return True
+
+    from services.quiz_service import parse_vocabulary_pairs
+    pairs = parse_vocabulary_pairs(raw_text)
+    if len(pairs) >= 2:
+        return True
+
+    lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
+    vocab_line_pattern = re.compile(
+        r"^([\d+•\-\*]+[\.\)]?\s*)?"
+        r"[a-zA-Zа-яА-ЯёЁўқғҳЎҚҒҲʻʼ']"
+        r"[a-zA-Zа-яА-ЯёЁўқғҳЎҚҒҲʻʼ'\s\(\)/]{0,40}\s*"
+        r"(?:->|=>|[-–—:=/•|]|\t|\s{2,})\s*"
+        r".+$"
+    )
+    matching_lines = sum(1 for line in lines if vocab_line_pattern.match(line))
+    if len(lines) >= 2 and matching_lines >= max(2, int(len(lines) * 0.30)):
+        return True
+
+    return False
+
+
 def is_english_content(
     topic: str | None = None,
     text: str | None = None,
@@ -134,7 +185,11 @@ def is_english_content(
     """Mavzu, matn yoki fayl ingliz tili (grammatika, lug'at, IELTS, CEFR va h.k.)ga oidligini aniqlash."""
     combined = f"{topic or ''} {filename or ''} {(text or '')[:15000]}".lower()
 
-    # 1. Ingliz tili kalit so'zlari
+    # 1. Lug'at (vocabulary) tekshiruvi
+    if is_vocabulary_content(topic, text, filename):
+        return True
+
+    # 2. Ingliz tili kalit so'zlari
     english_keywords = [
         "ingliz", "english", "ielts", "cefr", "toefl", "duolingo",
         "vocabulary", "phrasal verb", "collocation", "grammar",
@@ -148,11 +203,11 @@ def is_english_content(
     if any(k in combined for k in english_keywords):
         return True
 
-    # 2. Grammatika va formulalar tekshiruvi
+    # 3. Grammatika va formulalar tekshiruvi
     if is_english_grammar_or_formula_content(topic, text, filename):
         return True
 
-    # 3. Matndagi inglizcha to'xtash so'zlari ulushi (Inglizcha matn/kitob/maqolani aniqlash)
+    # 4. Matndagi inglizcha to'xtash so'zlari ulushi (Inglizcha matn/kitob/maqolani aniqlash)
     words = [w.strip(".,!?:;\"'()[]{}") for w in combined.split() if w.strip()]
     if len(words) >= 15:
         common_en_stop_words = {
@@ -283,6 +338,184 @@ MASTER_TEACHER_METHODOLOGY_DIRECTIVE = (
 )
 
 
+VOCABULARY_BEGINNER_DIRECTIVE = (
+    "\n"
+    "════════════════════════════════════════════════════════════════════\n"
+    "🟢 QAT'IY TALAB: BOSHLANG'ICH DARAJA (BEGINNER / ELEMENTARY) LUG'AT TESTI:\n"
+    "════════════════════════════════════════════════════════════════════\n"
+    "Foydalanuvchi ingliz tili lug'atini (so'zlar ro'yxatini) taqdim etdi va BOSHLANG'ICH (Beginner / Oson) darajani tanladi.\n"
+    "🚨 ENG MUHIM TALAB (ODDIY SO'Z-TARJIMA VA MA'NO SAVOLLARI):\n"
+    "- Beginner darajadagi o'quvchi ingliz tilidagi uzun va murakkab gaplarni, qiyin grammatikani bilmaydi!\n"
+    "- Shuning uchun bu darajada uzun murakkab gaplar, chigal gap to'ldirish (cloze) testlari ASLO TUZILMASIN!\n"
+    "- Savollar xuddi maktab darsligidagi kabi O'TA ODDIY, TO'G'RIDAN-TO'G'RI SO'Z-TARJIMA va MA'NO shaklida bo'lsin:\n\n"
+    "1. SAVOL SHAKLLARI (savollarni aralash qilib tuzing):\n"
+    "   a) O'zbekcha so'zning inglizcha tarjimasi:\n"
+    "      Masalan: '«suv» so\\'zining inglizcha tarjimasi qaysi?' -> Variantlar: ['water', 'milk', 'bread', 'tea']\n"
+    "      Masalan: '«kitob» so\\'zi ingliz tilida nima deyiladi?' -> Variantlar: ['book', 'pen', 'desk', 'bag']\n"
+    "      Masalan: '«olma» — to\\'g\\'ri inglizcha tarjimani tanlang:' -> Variantlar: ['apple', 'orange', 'banana', 'lemon']\n"
+    "   b) Inglizcha so'zning o'zbekcha ma'nosi:\n"
+    "      Masalan: '«water» so\\'zining ma\\'nosi nima?' -> Variantlar: ['suv', 'non', 'choy', 'sut']\n"
+    "      Masalan: '«cat» so\\'zining o\\'zbekcha tarjimasini toping:' -> Variantlar: ['mushuk', 'kuchuk', 'qush', 'baliq']\n"
+    "   c) Oddiy so'z juftligi / moslik:\n"
+    "      Masalan: 'Qaysi juftlik to\\'g\\'ri?' -> Variantlar: ['suv - water', 'non - pen', 'kitob - milk', 'maktab - dog']\n"
+    "      yoki: '«suv» — ...' -> Variantlar: ['water', 'fire', 'air', 'earth']\n\n"
+    "2. VARIANTLAR (OPTIONS):\n"
+    "   - Har bir variant lo'nda va qisqa (1 ta so'z yoki qisqa ibora) bo'lsin.\n"
+    "   - To'g'ri javob berilgan lug'atdagi so'z yoki uning tarjimasi bo'lsin.\n"
+    "   - Noto'g'ri variantlar (distractors) ham taqdim etilgan lug'atdagi boshqa so'zlardan yoki boshlang'ich darajaga mos boshqa oddiy so'zlardan tuzilsin.\n\n"
+    "3. IZOH (EXPLANATION):\n"
+    "   - O'zbek tilida, samimiy va o'rgatuvchi bo'lsin (maksimal 180 belgi).\n"
+    "   - Masalan: '💡 water — suv degani. Boshqa variantlar: milk — sut, bread — non, tea — choy.'\n"
+    "════════════════════════════════════════════════════════════════════\n\n"
+)
+
+VOCABULARY_INTERMEDIATE_DIRECTIVE = (
+    "\n"
+    "════════════════════════════════════════════════════════════════════\n"
+    "🟡 DARAJA: O'RTA (INTERMEDIATE / B1-B2) LUG'AT TESTI:\n"
+    "════════════════════════════════════════════════════════════════════\n"
+    "- Lug'atdagi so'zlar tabiiy kundalik kontekstdagi sodda gaplar (fill-in-the-blanks) orqali tekshirilsin.\n"
+    "- Gapdagi tekshirilayotgan so'z o'rniga '______' qoldiring.\n"
+    "- Gaplar tushunarli, o'rtacha murakkablikda (A2-B1 leksikasi) bo'lsin. Murakkab arxaik so'zlar kiritilmasin.\n"
+    "- Masalan: 'Please give me a glass of ______ because I am thirsty.' -> ['water', 'bread', 'table', 'paper']\n"
+    "- Izoh o'zbek tilida so'zning kontekstdagi ma'nosini lo'nda tushuntirsin (maksimal 180 belgi).\n"
+    "════════════════════════════════════════════════════════════════════\n\n"
+)
+
+VOCABULARY_ADVANCED_DIRECTIVE = (
+    "\n"
+    "════════════════════════════════════════════════════════════════════\n"
+    "🔴 DARAJA: QIYIN / YUQORI (ADVANCED / CEFR B2-C1 / IELTS) LUG'AT TESTI:\n"
+    "════════════════════════════════════════════════════════════════════\n"
+    "- Lug'atdagi so'zlar boy akademik va professional kontekstda, turg'un kollokatsiyalar va nozik semantik farqlar orqali tekshirilsin.\n"
+    "- Barcha savollar jonli kontekstli gap to'ldirish (contextual cloze) shaklida bo'lsin ('______').\n"
+    "- Chalg'ituvchilar nozik semantik farqli yoki talabalar tez-tez adashadigan so'zlar bo'lsin.\n"
+    "- Izoh o'zbek tilida ushbu so'z va kollokatsiyaning nozik qoidasini ko'rsatsin (maksimal 180 belgi).\n"
+    "════════════════════════════════════════════════════════════════════\n\n"
+)
+
+# Qadimgi nomlar bilan moslik uchun
+VOCABULARY_LIST_DIRECTIVE = VOCABULARY_INTERMEDIATE_DIRECTIVE
+
+
+def get_vocabulary_directive(difficulty: str) -> str:
+    """Lug'at (vocabulary) uchun tanlangan darajaga mos direktivani qaytarish."""
+    if is_beginner_difficulty(difficulty):
+        return VOCABULARY_BEGINNER_DIRECTIVE
+    elif (difficulty or "").lower() in ("medium", "intermediate", "o'rta", "orta", "b1", "b2"):
+        return VOCABULARY_INTERMEDIATE_DIRECTIVE
+    else:
+        return VOCABULARY_ADVANCED_DIRECTIVE
+
+
+def get_difficulty_calibration_directive(
+    difficulty: str,
+    is_english: bool = True,
+    is_vocab: bool = False,
+) -> str:
+    """Foydalanuvchi tanlagan qiyinlik darajasiga mos ravishda gap va so'z murakkabligini qat'iy cheklovchi direktiva."""
+    diff = (difficulty or "medium").lower()
+    if is_beginner_difficulty(diff):
+        if is_vocab:
+            return (
+                "\n"
+                "════════════════════════════════════════════════════════════════════\n"
+                "🟢 DARAJA: OSON / BOSHLANG'ICH (BEGINNER / ELEMENTARY / CEFR A1-A2)\n"
+                "════════════════════════════════════════════════════════════════════\n"
+                "🚨 LUG'AT UCHUN QAT'IY CHEKLOV (ODDIY SO'Z-TARJIMA VA MA'NO):\n"
+                "- Siz 'OSON / BOSHLANG'ICH' (Beginner) darajasidagi lug'at uchun test tuzmoqdasiz!\n"
+                "- Uzun, chigal yoki murakkab gaplar ASLO TUZILMASIN!\n"
+                "- Savollar to'g'ridan-to'g'ri so'z-tarjima va ma'no shaklida bo'lsin (masalan: «suv» so'zining inglizcha tarjimasi nima? -> 'water', yoki «water» so'zining ma'nosi nima? -> 'suv').\n"
+                "- Variantlar o'ta lo'nda — faqat 1 ta so'zdan iborat bo'lsin.\n"
+                "════════════════════════════════════════════════════════════════════\n\n"
+            )
+        elif is_english:
+            return (
+                "\n"
+                "════════════════════════════════════════════════════════════════════\n"
+                "🟢 DARAJA: OSON / BOSHLANG'ICH (BEGINNER / ELEMENTARY / CEFR A1-A2)\n"
+                "════════════════════════════════════════════════════════════════════\n"
+                "🚨 GAP TUZILISHI VA SO'ZLAR MURAKKABLIGI BO'YICHA QAT'IY CHEKLOV:\n"
+                "- Siz tanlangan 'OSON / BOSHLANG'ICH' daraja uchun test tuzmoqdasiz!\n"
+                "- Savol gapidagi barcha so'zlar va grammatika O'TA SODDA, KUNDALIK (A1-A2) bo'lishi SHART!\n"
+                "- Boshlang'ich o'quvchi tushunmaydigan murakkab so'zlar (masalan: 'excruciating', 'deteriorate', 'subsequently', 'furthermore', 'molar', 'depletion', 'ubiquitous') ASLO ISHLATILMASIN!\n"
+                "- Gaplar qisqa (6-12 so'z), sodda grammatika (Present Simple, Past Simple, can, must, am/is/are) va hamma biladigan so'zlardan (school, friend, car, food, time, go, see, help, home, weather) iborat bo'lsin.\n"
+                "  ✅ To'g'ri misol: 'Yesterday, Tom went to the ______ because his tooth was hurting.' -> ['dentist', 'driver', 'cook', 'farmer']\n"
+                "  ❌ Xato misol: 'After suffering from an excruciating toothache, Michael visited the ______ to extract the molar.' (Beginner o'quvchi bu gapni umuman tushunmaydi!)\n"
+                "════════════════════════════════════════════════════════════════════\n\n"
+            )
+        else:
+            return (
+                "\n"
+                "════════════════════════════════════════════════════════════════════\n"
+                "🟢 DARAJA: OSON / BOSHLANG'ICH (MAKTAB ASOSLARI / SODDA SAVOLLAR)\n"
+                "════════════════════════════════════════════════════════════════════\n"
+                "- Savollar mavzuning eng asosiy, boshlang'ich va sodda qoidalarini tekshirsin.\n"
+                "- Murakkab 3-4 bosqichli hisob-kitoblar yoki chigal parametrlar berilmasin. Savol tushunarli va 1-2 bosqichda yechiladigan bo'lsin.\n"
+                "════════════════════════════════════════════════════════════════════\n\n"
+            )
+    elif diff == "medium":
+        if is_english:
+            return (
+                "\n"
+                "════════════════════════════════════════════════════════════════════\n"
+                "🟡 DARAJA: O'RTA (INTERMEDIATE / CEFR B1-B2 / DTM STANDART)\n"
+                "════════════════════════════════════════════════════════════════════\n"
+                "- Gaplar standart o'rta darajadagi tabiiy ingliz tilida bo'lsin.\n"
+                "- Keng tarqalgan bog'lovchilar (although, because, while, unless) va kundalik mavzular qatnashsin.\n"
+                "- Haddan tashqari ibtidoiy bo'lib qolmasin, o'ta arxaik yoki ilmiy ham bo'lmasin.\n"
+                "════════════════════════════════════════════════════════════════════\n\n"
+            )
+        else:
+            return (
+                "\n"
+                "════════════════════════════════════════════════════════════════════\n"
+                "🟡 DARAJA: O'RTA (STANDART / DTM IMTIHON DARAJASI)\n"
+                "════════════════════════════════════════════════════════════════════\n"
+                "- Standart maktab va litsey dasturi darajasidagi amaliy masalalar va tahliliy savollar.\n"
+                "════════════════════════════════════════════════════════════════════\n\n"
+            )
+    elif diff == "hard":
+        if is_english:
+            return (
+                "\n"
+                "════════════════════════════════════════════════════════════════════\n"
+                "🔴 DARAJA: QIYIN / YUQORI (UPPER-INTERMEDIATE - ADVANCED / CEFR B2-C1 / IELTS 6.5-7.5)\n"
+                "════════════════════════════════════════════════════════════════════\n"
+                "- Boy akademik kontekst, rasmiy yoki ilmiy uslubdagi gaplar.\n"
+                "- Akademik lug'at (AWL), turg'un kollokatsiyalar va nozik semantik chalg'ituvchilar bo'lsin.\n"
+                "════════════════════════════════════════════════════════════════════\n\n"
+            )
+        else:
+            return (
+                "\n"
+                "════════════════════════════════════════════════════════════════════\n"
+                "🔴 DARAJA: QIYIN / CHUQUR (MURAKKAB MASALALAR VA PARAMETRLAR)\n"
+                "════════════════════════════════════════════════════════════════════\n"
+                "- Bir nechta qoidani birlashtiruvchi, mantiqiy ilmoqli va chuqur bilim talab qiluvchi savollar.\n"
+                "════════════════════════════════════════════════════════════════════\n\n"
+            )
+    else:  # olympiad
+        if is_english:
+            return (
+                "\n"
+                "════════════════════════════════════════════════════════════════════\n"
+                "🏆 DARAJA: OLIMPIADA / EKSPERT (CEFR C1-C2 / PROFICIENT / IELTS 8.0+)\n"
+                "════════════════════════════════════════════════════════════════════\n"
+                "- Eng yuqori darajadagi nozik leksik farqlar, idiomatik birikmalar va murakkab sintaksis.\n"
+                "════════════════════════════════════════════════════════════════════\n\n"
+            )
+        else:
+            return (
+                "\n"
+                "════════════════════════════════════════════════════════════════════\n"
+                "🏆 DARAJA: OLIMPIADA / EKSPERT (MAKTAB VA RESPUBLIKA OLIMPIADASI)\n"
+                "════════════════════════════════════════════════════════════════════\n"
+                "- Eng yuqori qiyinchilikdagi, nostandart yondashuv va chuqur ilmiy tahlil talab qiluvchi savollar.\n"
+                "════════════════════════════════════════════════════════════════════\n\n"
+            )
+
+
 class GeminiService:
     def __init__(self, api_key: str | None = None, model: str | None = None):
         self.api_key = api_key or GEMINI_API_KEY
@@ -358,9 +591,40 @@ class GeminiService:
             text=text_content,
             filename=file_name,
         )
+        is_vocab = is_vocabulary_content(
+            topic=topic,
+            text=text_content,
+            filename=file_name,
+        )
+        if is_vocab:
+            is_english = True
+
+        is_beginner = is_beginner_difficulty(difficulty)
+
+        level_calibration_clause = get_difficulty_calibration_directive(
+            difficulty=difficulty,
+            is_english=is_english,
+            is_vocab=is_vocab,
+        )
 
         english_directive_clause = ""
-        if is_english:
+        vocabulary_clause = ""
+        pedagogical_depth_clause = PEDAGOGICAL_DEPTH_DIRECTIVE
+        master_teacher_clause = MASTER_TEACHER_METHODOLOGY_DIRECTIVE
+
+        if is_vocab and is_beginner:
+            pedagogical_depth_clause = ""
+            master_teacher_clause = ""
+            english_directive_clause = ""
+            vocabulary_clause = VOCABULARY_BEGINNER_DIRECTIVE
+        elif is_vocab:
+            vocabulary_clause = get_vocabulary_directive(difficulty)
+            english_directive_clause = ENGLISH_PEDAGOGICAL_MASTER_DIRECTIVE
+        elif is_english and is_beginner:
+            pedagogical_depth_clause = ""
+            master_teacher_clause = ""
+            english_directive_clause = ""
+        elif is_english:
             english_directive_clause = ENGLISH_PEDAGOGICAL_MASTER_DIRECTIVE
 
         grammar_formula_clause = ""
@@ -405,10 +669,40 @@ class GeminiService:
                 "════════════════════════════════════════════════════════════════════\n\n"
             )
 
+        if is_vocab and is_beginner:
+            prompt_intro = (
+                f"Siz ingliz tili bo'yicha boshlang'ich (Beginner / A1 / Oson) daraja o'qituvchisisiz.\n"
+                f"Taqdim etilgan lug'at ro'yxatidan boshlang'ich o'quvchilar uchun ROPPA-ROSA {count} TA "
+                f"o'ta sodda, tushunarli so'z-tarjima va ma'no test savollarini tuzing.\n\n"
+            )
+            rule4_clause = (
+                f"4. explanation (Izoh): O'zbek tilida, qisqa va o'rgatuvchi bo'lsin "
+                f"(Masalan: '💡 water — suv degani. Boshqa variantlar: bread — non, milk — sut.').\n"
+            )
+            rule6_clause = (
+                f"6. Savollar shakli: O'zbekcha so'zning inglizcha tarjimasi (masalan: «suv» so'zi ingliz tilida nima deyiladi? -> water) "
+                f"yoki inglizcha so'zning o'zbekcha ma'nosi (masalan: «water» so'zining ma'nosi nima? -> suv). "
+                f"Variantlar lo'nda va faqat 1 ta so'zdan iborat bo'lsin.\n"
+            )
+            sample_expl = "💡 water — suv degani."
+        else:
+            prompt_intro = (
+                f"Siz 20 yillik tajribaga ega oliy toifali ustoz-metodist, akademik repetitor va pedagog-testologsiz.\n"
+                f"Xuddi tajribali ustoz o'quvchilarining bilimini sinovdan o'tkazayotgandek, "
+                f"quyida berilgan manba asosida ROPPA-ROSA {count} TA sifatli, mantiqan to'g'ri, ilmoqli va o'rgatuvchi test savollarini tuzing.\n\n"
+            )
+            rule4_clause = (
+                f"4. explanation (Izoh): Xuddi tajribali ustoz o'quvchining xatosini mehr bilan tuzatayotgandek yozilsin! "
+                f"Nega aynan shu javob to'g'riligi, qaysi nozik qoida ishlagani va o'quvchilar ko'p tushadigan tuzoq lo'nda (maksimal 180 belgi) tushuntirilsin "
+                f"(Masalan: '💡 Ustoz maslahati: ...' yoki '💡 Eslab qoling: ...').\n"
+            )
+            rule6_clause = (
+                f"6. Til qoidasi: Agar mavzu xorijiy til (ingliz tili, rus tili va h.k.) o'rganishga oid bo'lsa, test savollari va variantlari o'sha o'rganilayotgan tilda (yoki grammatika/lug'at topshirig'i shaklida), izohi (explanation) esa o'zbek tilida tushuntirilsin. Boshqa fanlar uchun savollar to'liq o'zbek tilida bo'lsin.\n"
+            )
+            sample_expl = "💡 Ustoz maslahati: ..."
+
         prompt = (
-            f"Siz 20 yillik tajribaga ega oliy toifali ustoz-metodist, akademik repetitor va pedagog-testologsiz.\n"
-            f"Xuddi tajribali ustoz o'quvchilarining bilimini sinovdan o'tkazayotgandek, "
-            f"quyida berilgan manba asosida ROPPA-ROSA {count} TA sifatli, mantiqan to'g'ri, ilmoqli va o'rgatuvchi test savollarini tuzing.\n\n"
+            f"{prompt_intro}"
             f"DIQQAT (SAVOLLAR SONI BO'YICHA QAT'IY TALAB):\n"
             f"Siz ROPPA-ROSA {count} TA savol tuzishingiz SHART! Kam ham bo'lmasin, ko'p ham bo'lmasin, aynan {count} ta bo'lsin.\n"
             f"JSON massivida aynan {count} ta savol obyekti bo'lishi shart (len(array) == {count}).\n\n"
@@ -419,14 +713,14 @@ class GeminiService:
             f"1. Savol matni: Aniq, lo'nda va tushunarli bo'lsin (maksimal 280 belgi).\n"
             f"2. Variantlar: Aynan {options_count} ta variant bo'lsin. Har bir variant maksimal 95 belgi.\n"
             f"3. To'g'ri javob: Faqat bitta variant to'g'ri bo'lsin va 'correct_id' 0 dan {options_count - 1} gacha bo'lgan to'g'ri indeksni ko'rsatsin.\n"
-            f"4. explanation (Izoh): Xuddi tajribali ustoz o'quvchining xatosini mehr bilan tuzatayotgandek yozilsin! "
-            f"Nega aynan shu javob to'g'riligi, qaysi nozik qoida ishlagani va o'quvchilar ko'p tushadigan tuzoq lo'nda (maksimal 180 belgi) tushuntirilsin "
-            f"(Masalan: '💡 Ustoz maslahati: ...' yoki '💡 Eslab qoling: ...').\n"
+            f"{rule4_clause}"
             f"5. BUTUN HUJJATNI QAMRAB OLING: Savollarni faqat hujjat boshidan emas, butun matn bo'ylab (boshi, o'rtasi, oxiri, turli darslar) aralash holda tanlang.\n"
-            f"6. Til qoidasi: Agar mavzu xorijiy til (ingliz tili, rus tili va h.k.) o'rganishga oid bo'lsa, test savollari va variantlari o'sha o'rganilayotgan tilda (yoki grammatika/lug'at topshirig'i shaklida), izohi (explanation) esa o'zbek tilida tushuntirilsin. Boshqa fanlar uchun savollar to'liq o'zbek tilida bo'lsin.\n"
-            f"{MASTER_TEACHER_METHODOLOGY_DIRECTIVE}"
-            f"{PEDAGOGICAL_DEPTH_DIRECTIVE}"
+            f"{rule6_clause}"
+            f"{master_teacher_clause}"
+            f"{pedagogical_depth_clause}"
+            f"{level_calibration_clause}"
             f"{english_directive_clause}"
+            f"{vocabulary_clause}"
             f"{grammar_formula_clause}"
             f"{listening_clause}"
             f"7. Javobingiz FAQAT aynan {count} ta elementdan iborat JSON array formatida bo'lsin:\n"
@@ -436,7 +730,7 @@ class GeminiService:
             '    "question": "Savol matni?",\n'
             f'    "options": {sample_opts_json},\n'
             '    "correct_id": 0,\n'
-            '    "explanation": "💡 Ustoz maslahati: ..."\n'
+            f'    "explanation": "{sample_expl}"\n'
             "  }\n"
             "]"
             f"{avoid_clause}\n\n"
@@ -506,18 +800,30 @@ class GeminiService:
             seen = set()
             unique_models = [m for m in models_to_try if m and not (m in seen or seen.add(m))]
 
+            if is_vocab and is_beginner:
+                sys_instruction = (
+                    "Siz tajribali ingliz tili o'qituvchisisiz. "
+                    "Boshlang'ich (Beginner / A1 / Oson) darajadagi o'quvchilar uchun taqdim etilgan lug'at ro'yxatidan "
+                    "o'ta sodda, ravon va tushunarli so'z-tarjima testlarini (masalan: '«water» so\\'zining ma\\'nosi nima?' -> 'suv' yoki '«suv» so\\'zining inglizcha tarjimasi qaysi?' -> 'water') JSON array formatida tuzib bering. "
+                    "Uzun murakkab gaplar yoki qiyin grammatikadan mutlaqo saqlaning. Savollar sodda, variantlar lo'nda bitta so'zdan iborat bo'lsin. "
+                    f"Sizdan so'ralgan roppa-rosa {count} ta savolni to'liq shakllantiring. "
+                    f"JSON arrayida aynan {count} ta obyekt bo'lsin."
+                )
+            else:
+                sys_instruction = (
+                    "Siz 20 yillik tajribaga ega oliy toifali ustoz-metodist, akademik repetitor va pedagog-testologsiz. "
+                    "Siz test tuzishda xuddi tajribali ustozlarday o'ylaysiz: o'quvchilar eng ko'p qayerda adashishini, qaysi ilmoq va nozik qoidalarda "
+                    "qoqilishini oldindan bilgan holda, chuqur fikrlashga, sabab-oqibatni tahlil qilishga va qoidalarni amalda qo'llashga undaydigan "
+                    "Cambridge / CEFR va xalqaro olimpiada standartidagi professional test savollarini tuzasiz. "
+                    "Sayoz yodlash, 1 soniyalik quruq faktlar, robotik iboralar ('Matnga ko'ra...') va quruq tarjimalardan saqlaning. "
+                    f"Sizdan so'ralgan roppa-rosa {count} ta savolni to'liq shakllantiring. "
+                    f"JSON arrayida aynan {count} ta obyekt bo'lsin."
+                )
+
             for model_name in unique_models:
                 try:
                     config = types.GenerateContentConfig(
-                        system_instruction=(
-                            "Siz 20 yillik tajribaga ega oliy toifali ustoz-metodist, akademik repetitor va pedagog-testologsiz. "
-                            "Siz test tuzishda xuddi tajribali ustozlarday o'ylaysiz: o'quvchilar eng ko'p qayerda adashishini, qaysi ilmoq va nozik qoidalarda "
-                            "qoqilishini oldindan bilgan holda, chuqur fikrlashga, sabab-oqibatni tahlil qilishga va qoidalarni amalda qo'llashga undaydigan "
-                            "Cambridge / CEFR va xalqaro olimpiada standartidagi professional test savollarini tuzasiz. "
-                            "Sayoz yodlash, 1 soniyalik quruq faktlar, robotik iboralar ('Matnga ko'ra...') va quruq tarjimalardan MUTLAQO saqlaning. "
-                            f"Sizdan so'ralgan roppa-rosa {count} ta savolni to'liq shakllantiring. "
-                            f"JSON arrayida aynan {count} ta obyekt bo'lsin."
-                        ),
+                        system_instruction=sys_instruction,
                         response_mime_type="application/json",
                         temperature=0.35,
                         max_output_tokens=max(4096, count * 450),
@@ -743,12 +1049,41 @@ class GeminiService:
             "easy": "Oson (boshlang'ich)",
             "medium": "O'rta (standart daraja)",
             "hard": "Qiyin (chuqur bilim talab qiluvchi)",
+            "olympiad": "Olimpiada (ekspert daraja)",
         }.get(difficulty, "O'rta (standart daraja)")
 
         is_grammar_formula = is_english_grammar_or_formula_content(text=text_content)
         is_english = is_english_content(text=text_content)
+        is_vocab = is_vocabulary_content(text=text_content)
+        if is_vocab:
+            is_english = True
+
+        level_batch_clause = get_difficulty_calibration_directive(
+            difficulty=difficulty,
+            is_english=is_english,
+            is_vocab=is_vocab,
+        )
+
         english_batch_clause = ""
-        if is_english:
+        vocabulary_batch_clause = ""
+        pedagogical_batch_clause = PEDAGOGICAL_DEPTH_DIRECTIVE
+        master_teacher_batch_clause = MASTER_TEACHER_METHODOLOGY_DIRECTIVE
+
+        is_beginner = is_beginner_difficulty(difficulty)
+
+        if is_vocab and is_beginner:
+            pedagogical_batch_clause = ""
+            master_teacher_batch_clause = ""
+            english_batch_clause = ""
+            vocabulary_batch_clause = VOCABULARY_BEGINNER_DIRECTIVE
+        elif is_vocab:
+            vocabulary_batch_clause = get_vocabulary_directive(difficulty)
+            english_batch_clause = ENGLISH_PEDAGOGICAL_MASTER_DIRECTIVE
+        elif is_english and is_beginner:
+            pedagogical_batch_clause = ""
+            master_teacher_batch_clause = ""
+            english_batch_clause = ""
+        elif is_english:
             english_batch_clause = ENGLISH_PEDAGOGICAL_MASTER_DIRECTIVE
 
         grammar_batch_clause = ""
@@ -864,9 +1199,11 @@ class GeminiService:
                     "TALABLAR:\n"
                     "1. Ro'yxatdagi har bir mavzuni o'z ichiga olgan alohida obyekt tuzing.\n"
                     "2. 'topic_title' aynan o'sha mavzu nomi bo'lsin.\n"
-                    f"{MASTER_TEACHER_METHODOLOGY_DIRECTIVE}"
-                    f"{PEDAGOGICAL_DEPTH_DIRECTIVE}"
+                    f"{master_teacher_batch_clause}"
+                    f"{pedagogical_batch_clause}"
+                    f"{level_batch_clause}"
                     f"{english_batch_clause}"
+                    f"{vocabulary_batch_clause}"
                     f"{grammar_batch_clause}"
                     "3. Javobingiz FAQAT JSON ro'yxati formatida bo'lsin:\n"
                     "[\n"
@@ -885,16 +1222,25 @@ class GeminiService:
                     f"MANBA HUJJAT MATNI:\n\"\"\"\n{text_content[:60000]}\n\"\"\""
                 )
 
+                if is_vocab and is_beginner:
+                    batch_sys_instruction = (
+                        "Siz tajribali ingliz tili o'qituvchisisiz. Boshlang'ich (Beginner / Oson) darajadagi o'quvchilar uchun "
+                        "taqdim etilgan lug'at ro'yxatidagi har bir dars/mavzu bo'yicha sodda so'z-tarjima va ma'no testlarini (masalan: '«water» so\\'zining ma\\'nosi nima?' -> 'suv') JSON ro'yxatida tuzib bering. "
+                        "Uzun murakkab gaplar yoki qiyin grammatikadan mutlaqo saqlaning. Savollar sodda, variantlar lo'nda bitta so'zdan iborat bo'lsin."
+                    )
+                else:
+                    batch_sys_instruction = (
+                        "Siz 20 yillik tajribaga ega oliy toifali ustoz-metodist va pedagog-repetitorsiz. "
+                        "Xuddi tajribali ustozlarday o'ylab, o'quvchini chuqur fikrlashga, sabab-oqibatni tahlil qilishga va qoidalarni amalda qo'llashga undaydigan "
+                        "professional va xalqaro standartdagi test savollarini JSON ro'yxatida tuzib bering. "
+                        "Sayoz, 1 soniyalik yodlash savollari, robotik iboralar ('Matnga ko'ra...') va quruq tarjimalardan saqlaning."
+                    )
+
                 async with sem:
                     for m_name in unique_models:
                         try:
                             cfg = types.GenerateContentConfig(
-                                system_instruction=(
-                                    "Siz 20 yillik tajribaga ega oliy toifali ustoz-metodist va pedagog-repetitorsiz. "
-                                    "Xuddi tajribali ustozlarday o'ylab, o'quvchini chuqur fikrlashga, sabab-oqibatni tahlil qilishga va qoidalarni amalda qo'llashga undaydigan "
-                                    "professional va xalqaro standartdagi test savollarini JSON ro'yxatida tuzib bering. "
-                                    "Sayoz, 1 soniyalik yodlash savollari, robotik iboralar ('Matnga ko'ra...') va quruq tarjimalardan MUTLAQO saqlaning."
-                                ),
+                                system_instruction=batch_sys_instruction,
                                 response_mime_type="application/json",
                                 temperature=0.35,
                                 max_output_tokens=8192,
@@ -939,9 +1285,11 @@ class GeminiService:
             "2. 'topic_title' maydonida mavzuning aniq nomi bo'lsin.\n"
             "3. Savollar va variantlar o'sha mavzuning lug'ati va faktlariga mos bo'lsin.\n"
             "4. Har bir savolda 'question', 'options', 'correct_id' (0 dan boshlanadi), va 'explanation' bo'lsin.\n"
-            f"{MASTER_TEACHER_METHODOLOGY_DIRECTIVE}"
-            f"{PEDAGOGICAL_DEPTH_DIRECTIVE}"
+            f"{master_teacher_batch_clause}"
+            f"{pedagogical_batch_clause}"
+            f"{level_batch_clause}"
             f"{english_batch_clause}"
+            f"{vocabulary_batch_clause}"
             f"{grammar_batch_clause}"
             "5. Javobingiz FAQAT quyidagi JSON ro'yxati formatida bo'lsin:\n"
             "[\n"
@@ -960,15 +1308,24 @@ class GeminiService:
             f"HUJJAT MATNI:\n\"\"\"\n{text_content[:100000]}\n\"\"\""
         )
 
+        if is_vocab and is_beginner:
+            single_sys_instruction = (
+                "Siz tajribali ingliz tili o'qituvchisisiz. Boshlang'ich (Beginner / Oson) darajadagi o'quvchilar uchun "
+                "taqdim etilgan lug'at ro'yxatidagi barcha dars/mavzular bo'yicha sodda so'z-tarjima va ma'no testlarini (masalan: '«water» so\\'zining ma\\'nosi nima?' -> 'suv') JSON ro'yxatida to'liq tuzib bering. "
+                "Uzun murakkab gaplar yoki qiyin grammatikadan mutlaqo saqlaning. Savollar sodda, variantlar lo'nda bitta so'zdan iborat bo'lsin."
+            )
+        else:
+            single_sys_instruction = (
+                "Siz 20 yillik tajribaga ega oliy toifali ustoz-metodist va akademik repetitorsiz. "
+                "Hujjatdagi barcha dars/mavzularni aniqlab, xuddi tajribali ustozlarday o'ylab, o'quvchini chuqur fikrlashga, tahlilga va qoidalarni amalda qo'llashga undaydigan "
+                "professional testlar to'plamini JSON ro'yxatida to'liq tuzib bering. "
+                "Sayoz savollar, robotik iboralar ('Matnga ko'ra...') va quruq tarjimalardan saqlaning."
+            )
+
         for model_name in unique_models:
             try:
                 config = types.GenerateContentConfig(
-                    system_instruction=(
-                        "Siz 20 yillik tajribaga ega oliy toifali ustoz-metodist va akademik repetitorsiz. "
-                        "Hujjatdagi barcha dars/mavzularni aniqlab, xuddi tajribali ustozlarday o'ylab, o'quvchini chuqur fikrlashga, tahlilga va qoidalarni amalda qo'llashga undaydigan "
-                        "professional testlar to'plamini JSON ro'yxatida to'liq tuzib bering. "
-                        "Sayoz savollar, robotik iboralar ('Matnga ko'ra...') va quruq tarjimalardan mutlaqo saqlaning."
-                    ),
+                    system_instruction=single_sys_instruction,
                     response_mime_type="application/json",
                     temperature=0.35,
                     max_output_tokens=16384,
