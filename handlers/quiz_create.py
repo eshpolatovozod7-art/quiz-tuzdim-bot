@@ -554,6 +554,83 @@ async def handle_batch_timer(callback: CallbackQuery, bot: Bot, state: FSMContex
     )
 
     if not topics_data:
+        logger.warning("Batch mavzular ajratib bo'lmadi, umumiy test tuzish zaxira rejimiga o'tilmoqda...")
+        if status_msg:
+            try:
+                await status_msg.edit_text(
+                    f"⏳ <b>«{html.escape(clean_title, quote=False)}» bo'yicha to'liq test tuzilmoqda...</b>\n\n"
+                    f"<i>Iltimos, ozgina kuting...</i>",
+                    parse_mode="HTML",
+                )
+            except Exception:
+                pass
+
+        from services.quiz_service import parse_vocabulary_pairs, generate_vocabulary_quiz_from_pairs
+        v_pairs = parse_vocabulary_pairs(text_content)
+        single_questions = []
+        is_vocab = is_vocabulary_content(topic=clean_title, text=text_content)
+        is_beg = diff in ("easy", "beginner")
+        target_cnt = max(cnt, 10)
+        if (is_vocab or is_beg) and len(v_pairs) >= 2:
+            single_questions = generate_vocabulary_quiz_from_pairs(
+                v_pairs,
+                count=target_cnt,
+                options_count=4,
+            )
+        if not single_questions:
+            single_questions = await gemini_service.generate_quiz(
+                topic=clean_title,
+                text_content=text_content,
+                question_count=target_cnt,
+                options_count=4,
+                difficulty=diff,
+            )
+
+        if single_questions:
+            q_id = uuid.uuid4().hex[:10]
+            await save_quiz(
+                quiz_id=q_id,
+                user_id=user_id,
+                title=clean_title[:40],
+                source_type="doc",
+                topic=clean_title[:40],
+                questions=single_questions,
+                options_count=4,
+                timer_seconds=tm,
+                difficulty=diff,
+            )
+            bot_info = await bot.get_me()
+            b_username = bot_info.username or "quiz_tuzdimbot"
+            quiz_obj = {
+                "quiz_id": q_id,
+                "title": clean_title[:40],
+                "questions": single_questions,
+                "question_count": len(single_questions),
+                "options_count": 4,
+                "timer_seconds": tm,
+                "difficulty": diff,
+            }
+            from handlers.quiz_play import format_quiz_ready_text
+            card_text = format_quiz_ready_text(quiz_obj, bot_username=b_username, is_group=False)
+            target_chat = callback.message.chat.id if callback.message else callback.from_user.id
+            if status_msg:
+                try:
+                    await status_msg.delete()
+                except Exception:
+                    pass
+            await bot.send_message(
+                chat_id=target_chat,
+                text=card_text,
+                reply_markup=get_quiz_card_keyboard(
+                    q_id,
+                    bot_username=b_username,
+                    is_group=False,
+                    title=clean_title[:40],
+                ),
+                parse_mode="HTML",
+            )
+            return
+
         if status_msg:
             await status_msg.edit_text(
                 "❌ Hujjatdagi mavzularni ajratishda xatolik yuz berdi. Iltimos, bitta umumiy test tuzishni tanlang yoki faylni qaytadan yuboring.",

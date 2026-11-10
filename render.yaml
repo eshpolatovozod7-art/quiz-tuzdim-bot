@@ -13,7 +13,7 @@ services:
       - key: GEMINI_API_KEY
         sync: false
       - key: DEFAULT_MODEL
-        value: gemini-3.5-flash
+        value: gemini-flash-lite-latest
       - key: GITHUB_TOKEN
         sync: false
       - key: GITHUB_DATA_REPO

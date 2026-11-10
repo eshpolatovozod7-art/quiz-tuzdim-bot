@@ -646,6 +646,45 @@ def extract_text_from_file(file_bytes: bytes, filename: str, max_chars: int = 25
     return text.strip()
 
 
+def extract_lesson_sections(text: str) -> list[dict[str, str]]:
+    """
+    Hujjatdan darslar, unitlar yoki alohida mavzularni regex orqali ajratib olish.
+    Qaytaradi: [
+        {"title": "Lesson 2: Daily Routine", "content": "..."},
+        ...
+    ]
+    """
+    if not text:
+        return []
+
+    # 1. Standart sarlavhalar: "Lesson 2", "Unit 3:", "1-dars", "Chapter 4"
+    pattern = re.compile(
+        r"(?im)^\s*[#*_]*\s*((?:Lesson|Unit|Dars|Bob|Chapter|Part)\s*(?:[№#]?\s*\d+|[IVXLCDM]+)[\s:.\-–—]+[^\n\r]*)",
+    )
+    matches = list(pattern.finditer(text))
+    if len(matches) < 2:
+        # 2. Yumshoqroq qidiruv: "Lesson 2", "2-dars", "1. Mavzu"
+        pattern2 = re.compile(
+            r"(?im)^\s*[#*_]*\s*(\d+[\s:.\-–—]+(?:dars|mavzu|darslik)[^\n\r]*|(?:Lesson|Unit|Dars|Bob|Chapter|Part)\s*(?:[№#]?\s*\d+|[IVXLCDM]+)[^\n\r]*)",
+        )
+        matches = list(pattern2.finditer(text))
+
+    if len(matches) < 2:
+        return []
+
+    sections: list[dict[str, str]] = []
+    for i in range(len(matches)):
+        m = matches[i]
+        raw_title = m.group(1).strip()
+        clean_title = re.sub(r"^[#*_]+|[#*_]+$", "", raw_title).strip()
+        start = m.end()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        content = text[start:end].strip()
+        if content:
+            sections.append({"title": clean_title[:45], "content": content})
+    return sections
+
+
 def parse_vocabulary_pairs(text: str) -> list[tuple[str, str]]:
     """Matndan so'z-tarjima juftliklarini ajratib olish (lug'at ro'yxati)."""
     if not text:

@@ -961,7 +961,20 @@ class GeminiService:
 
     async def extract_topics_from_text(self, text_content: str) -> list[str]:
         """Hujjatdagi barcha darslar, unitlar yoki mustaqil mavzular ro'yxatini aniqlash."""
-        if not self.client or not text_content:
+        if not text_content:
+            return []
+
+        # 1. Regex orqali aniq sarlavhalarni topish (tez va bexato)
+        try:
+            from services.quiz_service import extract_lesson_sections
+            regex_sections = extract_lesson_sections(text_content)
+            if len(regex_sections) >= 2:
+                logger.info("Mavzular regex orqali aniqlandi: %d ta mavzu.", len(regex_sections))
+                return [s["title"] for s in regex_sections][:40]
+        except Exception as re_err:
+            logger.debug("Regex mavzular ajratishda ogohlantirish: %s", re_err)
+
+        if not self.client:
             return []
 
         prompt = (
@@ -975,10 +988,9 @@ class GeminiService:
             f"HUJJAT MATNI:\n\"\"\"\n{text_content[:60000]}\n\"\"\""
         )
         models_to_try = [
-            self.model,
             "gemini-flash-lite-latest",
             "gemini-3.5-flash-lite",
-            "gemini-3.1-flash-lite",
+            self.model,
             "gemini-3.5-flash",
         ]
         seen = set()
@@ -1163,13 +1175,39 @@ class GeminiService:
                     })
             return result_topics
 
+        # 0-BOSQICH (Eng tez va 100% ishonchli): Hujjatdan dars bo'limlarini regex orqali ajratib olish
+        try:
+            from services.quiz_service import extract_lesson_sections, parse_vocabulary_pairs, generate_vocabulary_quiz_from_pairs
+            sections = extract_lesson_sections(text_content)
+            if len(sections) >= 2:
+                logger.info("Aniq sarlavhalar orqali %d ta dars/mavzu bo'limi aniqlandi.", len(sections))
+                direct_topics = []
+                for sec in sections:
+                    sec_title = sec["title"]
+                    sec_content = sec["content"]
+                    sec_pairs = parse_vocabulary_pairs(sec_content)
+                    if (is_vocab or is_beginner or len(sec_pairs) >= 3) and len(sec_pairs) >= 2:
+                        q_list = generate_vocabulary_quiz_from_pairs(
+                            sec_pairs,
+                            count=questions_per_topic,
+                            options_count=options_count,
+                        )
+                        if q_list:
+                            direct_topics.append({
+                                "topic_title": sec_title,
+                                "questions": q_list,
+                            })
+                if len(direct_topics) >= 2:
+                    logger.info("Lug'at juftliklaridan %d ta dars uchun testlar to'liq va tez tuzildi!", len(direct_topics))
+                    return direct_topics
+        except Exception as fast_err:
+            logger.warning("Tezkor dars bo'limlarini tahlil qilishda ogohlantirish: %s", fast_err)
+
         models_to_try = [
+            "gemini-flash-lite-latest",
+            "gemini-3.5-flash-lite",
             self.model,
             "gemini-3.5-flash",
-            "gemini-3.5-flash-lite",
-            "gemini-flash-latest",
-            "gemini-flash-lite-latest",
-            "gemini-3.8-flash",
         ]
         seen = set()
         unique_models = [m for m in models_to_try if m and not (m in seen or seen.add(m))]
@@ -1184,7 +1222,7 @@ class GeminiService:
             chunks = [discovered_topics[i:i + chunk_size] for i in range(0, len(discovered_topics), chunk_size)]
             logger.info("Mavzular %d ta bo'lakka bo'lindi (har birida ~%d ta mavzu).", len(chunks), chunk_size)
 
-            sem = asyncio.Semaphore(3)
+            sem = asyncio.Semaphore(2)
 
             async def process_chunk(chunk_topics: list[str]) -> list[dict[str, Any]]:
                 chunk_prompt = (
