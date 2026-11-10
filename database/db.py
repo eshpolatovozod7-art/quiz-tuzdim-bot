@@ -301,7 +301,7 @@ async def get_user_batches(user_id: int) -> list[dict[str, Any]]:
             MIN(created_at) as created_at,
             GROUP_CONCAT(title, ' ||| ') as sample_titles
         FROM quizzes
-        WHERE user_id = ?
+        WHERE user_id = ? AND batch_id IS NOT NULL
         GROUP BY batch_id
         ORDER BY batch_id ASC
         """

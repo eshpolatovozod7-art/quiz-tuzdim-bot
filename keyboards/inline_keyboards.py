@@ -645,9 +645,9 @@ def get_my_quizzes_categories_keyboard(
     """Mening testlarim to'plamlari (kategoriyalari: 1-chi, 2-chi, 3-chi...) klaviaturasi."""
     rows = []
 
-    # 1. Tablar: To'plamlar vs Ishlagan testlarim
+    # 1. Tablar: To'plamlar vs Barcha testlar vs Ishlaganlarim
     rows.append([
-        InlineKeyboardButton(text=f"🟢 📁 To'plamlar ({len(batches)})", callback_data="menu:history"),
+        InlineKeyboardButton(text=f"📋 Barcha testlar ({created_count})", callback_data="history:tab:created:1"),
         InlineKeyboardButton(text=f"🎯 Ishlaganlarim ({taken_count})", callback_data="history:tab:taken:1"),
     ])
 

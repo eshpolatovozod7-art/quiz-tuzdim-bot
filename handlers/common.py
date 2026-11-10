@@ -233,8 +233,9 @@ async def handle_history(event: Message | CallbackQuery, bot: Bot) -> None:
     taken_count = await get_user_taken_quizzes_count(user.id)
     batches = await get_user_batches(user.id)
 
-    # Agar foydalanuvchi to'g'ridan-to'g'ri "Mening testlarim"ga kirsa va to'plamlar (kategoriyalar) mavjud bo'lsa:
-    if is_direct_history and batches:
+    # Agar foydalanuvchi maxsus "To'plamlar" bo'limini tanlasa:
+    is_batches_view = isinstance(event, CallbackQuery) and (event.data or "").startswith("history:tab:batches")
+    if is_batches_view and batches:
         if isinstance(event, CallbackQuery):
             await event.answer()
 
@@ -249,7 +250,7 @@ async def handle_history(event: Message | CallbackQuery, bot: Bot) -> None:
         text = (
             "📜 <b>Mening testlarim</b> (Kategoriyalar / To'plamlar):\n\n"
             f"{batch_desc}\n\n"
-            "<i>Kerakli to'plamni tanlang (1-chi yaratgan testlaringiz, 2-chi yaratgan testlaringiz...):</i> 👇"
+            "<i>Kerakli to'plamni tanlang:</i> 👇"
         )
         kb = get_my_quizzes_categories_keyboard(
             batches=batches,
@@ -359,8 +360,14 @@ async def handle_history_batch(callback: CallbackQuery, bot: Bot) -> None:
     await callback.answer()
 
     parts = callback.data.split(":")
-    batch_id = int(parts[2]) if len(parts) >= 3 else 1
-    page = int(parts[3]) if len(parts) >= 4 else 1
+    try:
+        batch_id = int(parts[2]) if len(parts) >= 3 else 1
+    except (ValueError, TypeError):
+        batch_id = 1
+    try:
+        page = int(parts[3]) if len(parts) >= 4 else 1
+    except (ValueError, TypeError):
+        page = 1
 
     per_page = 6
     total_items = await get_user_batch_quizzes_count(user.id, batch_id)
