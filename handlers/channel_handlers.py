@@ -1,6 +1,7 @@
 import html
 import logging
 from aiogram import Router, F, Bot
+from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 
@@ -9,18 +10,21 @@ from database.db import (
     add_channel_schedule,
     delete_channel_schedule,
 )
-from keyboards.inline_keyboards import get_main_menu_keyboard
 from utils.states import ChannelScheduleState
 
 logger = logging.getLogger(__name__)
 router = Router()
 
 
+@router.message(Command("channel", "channels"))
 @router.callback_query(F.data == "menu:channels")
-async def handle_menu_channels(callback: CallbackQuery, state: FSMContext, bot: Bot) -> None:
+async def handle_menu_channels(event: Message | CallbackQuery, state: FSMContext, bot: Bot) -> None:
     """Kanallarga avtomatik test rejalashtirish boshqaruvi."""
     await state.clear()
-    user_id = callback.from_user.id
+    user = event.from_user
+    if not user:
+        return
+    user_id = user.id
     schedules = await get_user_channel_schedules(user_id)
     bot_info = await bot.get_me()
 
@@ -61,9 +65,12 @@ async def handle_menu_channels(callback: CallbackQuery, state: FSMContext, bot: 
     ])
 
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
-    if callback.message:
-        await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
-    await callback.answer()
+    if isinstance(event, CallbackQuery):
+        await event.answer()
+        if event.message:
+            await event.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    else:
+        await event.answer(text, reply_markup=kb, parse_mode="HTML")
 
 
 @router.callback_query(F.data == "ch_add:start")

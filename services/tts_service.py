@@ -1,7 +1,5 @@
-import asyncio
 import io
 import logging
-import tempfile
 import edge_tts
 
 logger = logging.getLogger(__name__)

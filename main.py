@@ -76,6 +76,7 @@ async def set_bot_commands(bot: Bot) -> None:
         BotCommand(command="stop", description="🛑 Faol testni to'xtatish"),
         BotCommand(command="daily", description="⚡️ Kun Testi (Streak)"),
         BotCommand(command="duel", description="⚔️ 1 vs 1 Viktorina Jangi"),
+        BotCommand(command="channels", description="📢 Kanallarga avto-test ulash"),
         BotCommand(command="poll", description="👥 Guruhga testlarni tashlash"),
         BotCommand(command="top", description="🏆 Guruh peshqadamlar jadvali"),
         BotCommand(command="excel", description="📊 Natijalarni Excelda olish"),

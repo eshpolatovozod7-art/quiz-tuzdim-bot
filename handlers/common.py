@@ -665,4 +665,6 @@ async def handle_excel_command(message: Message, bot: Bot) -> None:
         caption = f"📊 <b>{html.escape(chat_title, quote=False)}</b> guruhining test natijalari hisoboti (Excel)"
         await message.answer_document(file, caption=caption, parse_mode="HTML")
     except Exception as e:
+        import logging
+        logging.getLogger(__name__).exception("Excel yaratishda xatolik: %s", e)
         await message.answer("❌ Excel hisobot yaratishda xatolik yuz berdi.")

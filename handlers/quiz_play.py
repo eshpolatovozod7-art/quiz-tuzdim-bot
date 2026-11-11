@@ -6,6 +6,7 @@ from typing import Any
 from aiogram import Router, F, Bot
 from aiogram.dispatcher.event.bases import SkipHandler
 from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
 from aiogram.types import (
     CallbackQuery,
     Message,
@@ -135,9 +136,17 @@ def format_quiz_single_ready_text(quiz: dict[str, Any], bot_username: str = "qui
 
 
 @router.message(Command("stop"))
-async def handle_stop_command(message: Message, bot: Bot) -> None:
-    """Testni to'xtatish (/stop)."""
+async def handle_stop_command(message: Message, bot: Bot, state: FSMContext) -> None:
+    """Testni yoki joriy jarayonni to'xtatish (/stop)."""
     chat_id = message.chat.id
+
+    # Jarayonda bo'lgan FSM holatini bekor qilish (masalan, test tuzish)
+    current_state = await state.get_state()
+    if current_state:
+        await state.clear()
+        from services.quiz_service import clear_user_media
+        if message.from_user:
+            clear_user_media(message.from_user.id)
 
     # Guruhda bo'lsa
     if message.chat.type in ["group", "supergroup"]:
@@ -1053,6 +1062,8 @@ async def handle_poll_answer(poll_answer: PollAnswer, bot: Bot) -> None:
             await send_next_question(session_key, bot)
         else:
             await finish_quiz(session_key, bot)
+    except SkipHandler:
+        raise
     except Exception as ex:
         logger.exception("handle_poll_answer da xatolik: %s", ex)
 
@@ -1107,10 +1118,8 @@ async def finish_quiz(session_key: int, bot: Bot) -> None:
 
     quiz_id = session["quiz_id"]
     title = session["title"]
-    escaped_title = html.escape(title, quote=False)
     total = session["total"]
     correct = session["correct_count"]
-    wrong = max(0, total - correct)
     pct = round((correct / total) * 100) if total > 0 else 0
     elapsed = max(1, round(time.time() - session.get("start_time", time.time())))
     mins, secs = divmod(elapsed, 60)

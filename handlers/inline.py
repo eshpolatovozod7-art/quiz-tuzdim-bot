@@ -1,6 +1,6 @@
 import hashlib
 import html
-from aiogram import Router, F, Bot
+from aiogram import Router, Bot
 from aiogram.types import (
     InlineQuery,
     InlineQueryResultArticle,

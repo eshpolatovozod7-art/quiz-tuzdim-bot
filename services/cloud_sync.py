@@ -1,7 +1,6 @@
 import asyncio
 import base64
 import logging
-import os
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -96,6 +95,12 @@ async def download_cloud_db() -> bool:
 
                     # Cloud yangi bo'lsa, lokalga o'tkazamiz
                     tmp_path.replace(DB_PATH)
+                    for suffix in ("-wal", "-shm"):
+                        wal_file = DB_PATH.with_name(DB_PATH.name + suffix)
+                        try:
+                            wal_file.unlink(missing_ok=True)
+                        except Exception:
+                            pass
                     logger.info("✅ Cloud bazadan %d ta test (%d bayt) muvaffaqiyatli tiklandi: %s", cloud_count, len(db_bytes), DB_PATH)
                     return True
 
@@ -129,6 +134,13 @@ async def upload_cloud_db(commit_message: str = "Auto-sync database update [skip
 
         for attempt in range(2):
             try:
+                # WAL rejimida oxirgi o'zgarishlarni quiz_bot.db fayliga to'liq tushirish (checkpoint)
+                try:
+                    with sqlite3.connect(str(DB_PATH), timeout=5.0) as conn:
+                        conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+                except Exception as ck_err:
+                    logger.debug("WAL checkpoint ogohlantirish: %s", ck_err)
+
                 content_bytes = DB_PATH.read_bytes()
                 content_b64 = base64.b64encode(content_bytes).decode("utf-8")
 

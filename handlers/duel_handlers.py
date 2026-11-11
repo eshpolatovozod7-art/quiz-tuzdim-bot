@@ -6,6 +6,7 @@ import uuid
 from typing import Any
 from urllib.parse import quote
 from aiogram import Router, F, Bot
+from aiogram.filters import Command
 from aiogram.dispatcher.event.bases import SkipHandler
 from aiogram.types import Message, CallbackQuery, PollAnswer, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
@@ -33,8 +34,9 @@ _active_duel_sessions: dict[tuple[int, str], dict[str, Any]] = {}
 _duel_poll_map: dict[str, tuple[int, str]] = {}
 
 
+@router.message(Command("duel"))
 @router.callback_query(F.data == "menu:duel")
-async def handle_menu_duel(callback: CallbackQuery, state: FSMContext) -> None:
+async def handle_menu_duel(event: Message | CallbackQuery, state: FSMContext) -> None:
     """1 vs 1 Duel bo'limi boshlanishi."""
     await state.clear()
     text = (
@@ -63,9 +65,12 @@ async def handle_menu_duel(callback: CallbackQuery, state: FSMContext) -> None:
             ],
         ]
     )
-    if callback.message:
-        await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
-    await callback.answer()
+    if isinstance(event, CallbackQuery):
+        await event.answer()
+        if event.message:
+            await event.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    else:
+        await event.answer(text, reply_markup=kb, parse_mode="HTML")
 
 
 @router.callback_query(F.data.startswith("duel_top:"))

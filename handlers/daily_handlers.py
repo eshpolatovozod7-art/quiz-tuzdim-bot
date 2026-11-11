@@ -1,14 +1,11 @@
-import asyncio
 import datetime
-import html
 import logging
 from aiogram import Router, F, Bot
 from aiogram.dispatcher.event.bases import SkipHandler
 from aiogram.types import Message, CallbackQuery, PollAnswer, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
 
-from database.db import get_user_streak, record_or_update_user_streak, save_quiz
-from keyboards.inline_keyboards import get_main_menu_keyboard
+from database.db import get_user_streak, record_or_update_user_streak
 from services.gemini_service import GeminiService
 
 logger = logging.getLogger(__name__)

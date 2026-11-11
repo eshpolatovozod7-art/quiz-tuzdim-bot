@@ -8,11 +8,9 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 
-from config import UPLOADS_DIR
 from database.db import save_quiz, get_user_used_questions
 import re
 from keyboards.inline_keyboards import (
-    get_main_menu_keyboard,
     get_create_source_keyboard,
     get_back_to_menu_keyboard,
     get_popular_topics_keyboard,

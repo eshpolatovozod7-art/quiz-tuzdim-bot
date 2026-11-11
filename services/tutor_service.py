@@ -54,15 +54,29 @@ class TutorService:
             "- Emojilardan o'rinli foydalaning."
         )
 
-        try:
-            response = await self.client.aio.models.generate_content(
-                model=self.model,
-                contents=prompt,
-            )
-            return response.text.strip()
-        except Exception as e:
-            logger.error("AI repetitor tahlilida xatolik: %s", e)
-            return (
-                "⚠️ <b>AI Repetitor tahlilida vaqtinchalik uzilish yuz berdi.</b>\n\n"
-                "Iltimos, pastdagi «Xatolar ustida ishlash» tugmasi orqali savollarni qayta topshirib ko'ring!"
-            )
+        models_to_try = [
+            self.model,
+            "gemini-flash-lite-latest",
+            "gemini-3.5-flash-lite",
+            "gemini-3.5-flash",
+        ]
+        seen = set()
+        unique_models = [m for m in models_to_try if m and not (m in seen or seen.add(m))]
+
+        for model_name in unique_models:
+            try:
+                response = await self.client.aio.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                )
+                if response and response.text:
+                    return response.text.strip()
+            except Exception as e:
+                logger.warning("AI repetitor tahlilida model %s xatoligi: %s", model_name, e)
+                continue
+
+        logger.error("Barcha modellar AI repetitor tahlilida muvaffaqiyatsiz bo'ldi.")
+        return (
+            "⚠️ <b>AI Repetitor tahlilida vaqtinchalik uzilish yuz berdi.</b>\n\n"
+            "Iltimos, pastdagi «Xatolar ustida ishlash» tugmasi orqali savollarni qayta topshirib ko'ring!"
+        )
