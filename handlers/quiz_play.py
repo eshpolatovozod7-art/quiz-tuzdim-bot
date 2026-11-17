@@ -72,8 +72,8 @@ def format_quiz_ready_text(
     title = html.escape(quiz.get("title", "Test"), quote=False)
     questions = quiz.get("questions", [])
     count = quiz.get("question_count", len(questions))
-    tm = quiz.get("timer_seconds", 15)
-    tm_str = f"{tm} soniya" if (tm and tm > 0) else "15 soniya"
+    tm = quiz.get("timer_seconds", 0)
+    tm_str = f"{tm} soniya" if (tm and tm > 0) else "Cheklovsiz"
 
     diff = quiz.get("difficulty", "medium")
     diff_labels = {
@@ -101,17 +101,19 @@ def format_quiz_ready_text(
         f"🎲 <b>“{title}”</b>\n\n"
         f"🗡 {count} ta savol{opts_str}\n"
         f"🎚 Qiyinlik darajasi: {diff_str}\n"
-        f"⏱ Guruhda: {tm_str} · Shaxsiyda: Cheklovsiz\n"
+        f"⏱ Har bir savol uchun: <b>{tm_str}</b>\n"
         f"🏛 Ovozlar test egasiga ko‘rinadigan bo‘ladi\n\n"
         f"<i>Testni boshlash, do‘stlarga ulashish yoki guruhga qo‘shish uchun quyidagi tugmalardan foydalaning:</i> 👇"
     )
 
 
 def format_quiz_single_ready_text(quiz: dict[str, Any], bot_username: str = "quiz_tuzdimbot") -> str:
-    """Yakka tartibda ishlayotganda (vaqt cheklovisiz) tayyorgarlik xabari."""
+    """Yakka tartibda ishlayotganda tayyorgarlik xabari."""
     title = html.escape(quiz.get("title", "Test"), quote=False)
     questions = quiz.get("questions", [])
     count = quiz.get("question_count", len(questions))
+    tm = quiz.get("timer_seconds", 0)
+    tm_text = f"⏱ Har bir savol uchun: <b>{tm} soniya</b>" if (tm and tm > 0) else "⏱ O‘z sur’atingizda (vaqt cheklovisiz)"
 
     diff = quiz.get("difficulty", "medium")
     diff_labels = {
@@ -128,7 +130,7 @@ def format_quiz_single_ready_text(quiz: dict[str, Any], bot_username: str = "qui
         f"🎲 <b>“{title}” testiga tayyorlaning</b>\n\n"
         f"🗡 {count} ta savol{opts_str}\n"
         f"🎚 Qiyinlik darajasi: {diff_str}\n"
-        f"⏱ O‘z sur’atingizda (savol belgilanishi bilan keyingisiga o‘tadi)\n"
+        f"{tm_text}\n"
         f"🏛 Ovozlar test egasiga ko‘rinadigan bo‘ladi\n\n"
         f"🏁 Tayyor bo‘lganingizda quyidagi tugmani bosing.\n"
         f"Uni to‘xtatish uchun /stop buyrug‘ini yuboring."
@@ -928,6 +930,8 @@ async def send_next_question(session_key: int, bot: Bot) -> None:
     }
     if expl:
         poll_kwargs["explanation"] = expl
+    if timer_seconds and 5 <= timer_seconds <= 600:
+        poll_kwargs["open_period"] = timer_seconds
 
     try:
         if q.get("audio_text"):
@@ -953,7 +957,13 @@ async def send_next_question(session_key: int, bot: Bot) -> None:
         pid = msg.poll.id
         session["current_poll_id"] = pid
         _poll_map[pid] = session_key
-        logger.info("Savol [%d/%d] muvaffaqiyatli yuborildi: poll_id=%s (chat_id=%s)", idx + 1, total, pid, chat_id)
+
+        if timer_seconds and 5 <= timer_seconds <= 600:
+            session["timeout_task"] = asyncio.create_task(
+                _timeout_watcher(session_key, pid, idx, timer_seconds, bot)
+            )
+
+        logger.info("Savol [%d/%d] muvaffaqiyatli yuborildi: poll_id=%s (chat_id=%s, timer=%ss)", idx + 1, total, pid, chat_id, timer_seconds)
     except Exception as e:
         logger.exception("Savol yuborishda xatolik: %s", e)
         session["current_idx"] += 1
@@ -1077,7 +1087,7 @@ async def _timeout_watcher(
 ) -> None:
     """Taymer vaqti tugaganda keyingi savolga o'tkazish."""
     try:
-        await asyncio.sleep(timer_seconds + 1.2)
+        await asyncio.sleep(timer_seconds + 0.5)
         session = _active_sessions.get(session_key)
         if not session or session.get("current_poll_id") != poll_id:
             return
@@ -1089,6 +1099,18 @@ async def _timeout_watcher(
             q = session["questions"][expected_idx]
             session["wrong_questions"].append(q)
             session["current_idx"] += 1
+
+        chat_id = session.get("chat_id", session_key)
+        try:
+            await bot.send_message(
+                chat_id=chat_id,
+                text=f"⏰ <b>Vaqt tugadi!</b> ({timer_seconds} soniya)",
+                parse_mode="HTML",
+            )
+        except Exception:
+            pass
+
+        await asyncio.sleep(0.3)
 
         if session["current_idx"] < session["total"]:
             await send_next_question(session_key, bot)

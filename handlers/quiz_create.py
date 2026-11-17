@@ -79,6 +79,42 @@ def clean_topic_input(text: str) -> str:
     return cleaned if cleaned else text.strip()
 
 
+def parse_batch_text_intent(text: str) -> tuple[bool, str]:
+    """
+    Foydalanuvchi matnida 'har bir mavzuga' yoki 'har bir darsga' alohida test so'raganini aniqlash
+    va buyruq so'zlarini tozalab mavzu nomini ajratish.
+    """
+    lower = text.lower().strip()
+    batch_keywords = [
+        "har bir mavzuga", "har bir mavzu", "har bir darsga", "har bir dars",
+        "har biriga", "alohida mavzu", "alohida dars", "mavzularga bo'lib",
+        "mavzularga bolib", "mavzularga bo'l", "mavzularga bol", "mavzular bo'yicha",
+        "mavzular boyicha", "darslar bo'yicha", "darslar boyicha", "har bir unit",
+        "alohida testlar", "alohida test", "har bir mavzusiga", "mavzularga ajrat"
+    ]
+    is_batch = any(bk in lower for bk in batch_keywords) or (
+        any(k in lower for k in ["har bir", "alohida", "bo'lib", "bolib", "ajratib"])
+        and any(w in lower for w in ["mavzu", "dars", "test", "savol", "unit"])
+    )
+    if not is_batch:
+        return False, text.strip()
+
+    cleaned = text
+    remove_patterns = [
+        r"(?i)\b(?:har\s+bir\s+(?:mavzu(?:ga|dan|si)?|dars(?:ga|dan)?|unit(?:ga)?|iga))\b",
+        r"(?i)\b(?:alohida\s+(?:test(?:lar)?|mavzu|dars))\b",
+        r"(?i)\b(?:mavzular(?:ga)?\s+(?:bo'lib|bolib|bo'l|bol|bo'yicha|boyicha|ajratib))\b",
+        r"(?i)\b(?:qilib\s+ber(?:ing)?|tuzib\s+ber(?:ing)?|tayyorlab\s+ber(?:ing)?|ber(?:ing)?)\b",
+        r"(?i)\b(?:test(?:lar)?\s+(?:tuz|qil|ber))\b",
+    ]
+    for pat in remove_patterns:
+        cleaned = re.sub(pat, "", cleaned)
+
+    cleaned = re.sub(r"[\s:,\-–—]+$", "", cleaned).strip()
+    cleaned = re.sub(r"^[\s:,\-–—]+", "", cleaned).strip()
+    return True, cleaned
+
+
 @router.callback_query(F.data == "menu:topic")
 async def handle_menu_topic(callback: CallbackQuery, state: FSMContext) -> None:
     """Mavzu bo'yicha test tuzish."""
@@ -209,6 +245,10 @@ async def handle_topic_preset(callback: CallbackQuery, state: FSMContext) -> Non
 @router.message(QuizCreateState.waiting_topic, F.text & ~F.text.startswith("/"))
 async def process_topic_text(message: Message, state: FSMContext) -> None:
     raw_topic = message.text.strip()
+    is_batch, cleaned = parse_batch_text_intent(raw_topic)
+    if is_batch:
+        return await process_plain_text(message, state)
+
     if is_vocabulary_content(text=raw_topic):
         save_user_media(message.from_user.id, text_content=raw_topic)
         await start_quiz_wizard(
@@ -227,6 +267,10 @@ async def process_topic_text(message: Message, state: FSMContext) -> None:
 @router.message(QuizCreateState.waiting_text, F.text)
 async def process_custom_text(message: Message, state: FSMContext) -> None:
     text_content = message.text.strip()
+    is_batch, cleaned = parse_batch_text_intent(text_content)
+    if is_batch:
+        return await process_plain_text(message, state)
+
     is_vocab = is_vocabulary_content(text=text_content)
     title = "Lug'at (Vocabulary)" if is_vocab else (text_content[:30].replace("\n", " ").strip() + "...")
     save_user_media(message.from_user.id, text_content=text_content)
@@ -551,6 +595,21 @@ async def handle_batch_timer(callback: CallbackQuery, bot: Bot, state: FSMContex
         difficulty=diff,
     )
 
+    if not topics_data or len(topics_data) < 2:
+        logger.info("Batch mavzular kam chiqdi (%s), mavzuni kengaytirishga urinilmoqda...", len(topics_data) if topics_data else 0)
+        expand_source = clean_title if (clean_title and clean_title != "Hujjat" and len(clean_title) >= 3) else text_content[:500]
+        sub_topics = await gemini_service.extract_topics_from_text(expand_source)
+        if len(sub_topics) >= 2:
+            formatted_sub = "\n".join(f"{i}. {t}" for i, t in enumerate(sub_topics, 1))
+            expanded_data = await gemini_service.generate_batch_topic_quizzes(
+                text_content=formatted_sub,
+                questions_per_topic=cnt,
+                options_count=4,
+                difficulty=diff,
+            )
+            if expanded_data and len(expanded_data) >= 2:
+                topics_data = expanded_data
+
     if not topics_data:
         logger.warning("Batch mavzular ajratib bo'lmadi, umumiy test tuzish zaxira rejimiga o'tilmoqda...")
         if status_msg:
@@ -567,7 +626,7 @@ async def handle_batch_timer(callback: CallbackQuery, bot: Bot, state: FSMContex
         single_questions = await gemini_service.generate_quiz(
             topic=clean_title,
             text_content=text_content,
-            count=target_cnt,
+            question_count=target_cnt,
             options_count=4,
             difficulty=diff,
         )
@@ -613,7 +672,7 @@ async def handle_batch_timer(callback: CallbackQuery, bot: Bot, state: FSMContex
                     pass
             await bot.send_message(
                 chat_id=target_chat,
-                text=card_text,
+                text=f"ℹ️ <i>Hujjatdan alohida mustaqil mavzular ajratib bo'lmadi. Butun manba bo'yicha yagona to'liq test tayyorlandi:</i>\n\n{card_text}",
                 reply_markup=get_quiz_card_keyboard(
                     q_id,
                     bot_username=b_username,
@@ -885,20 +944,47 @@ async def process_plain_text(message: Message, state: FSMContext) -> None:
     if lower_text in ("mening testlarim", "testlarim", "statistika", "mening statistikam", "kun testi", "duel", "yordam", "bosh menyu"):
         return
 
-    # Foydalanuvchi "har bir mavzuga test qilib ber" deb yozsa va hujjat nazarda tutilgan bo'lsa
-    batch_keywords = [
-        "har bir mavzu", "har bir dars", "alohida mavzu", "alohida dars",
-        "har biriga", "mavzularga bo'l", "mavzularga bol", "har bir mavzudan",
-        "har bir darsdan", "mavzular bo'yicha", "mavzular boyicha", "darslar bo'yicha",
-        "mavzularga ajrat", "har bir unit", "alohida test", "har bir mavzuga", "har bir darsga",
-        "har bir mavzusiga", "mavzularga bo'lib", "mavzularga bolib"
-    ]
-    is_batch_phrase = any(bk in lower_text for bk in batch_keywords) or (
-        any(k in lower_text for k in ["har bir", "alohida", "bo'lib", "bolib", "ajratib"])
-        and any(w in lower_text for w in ["mavzu", "dars", "test", "savol", "unit"])
-    )
+    # 1. Foydalanuvchi "har bir mavzuga test qilib ber" deb yozgan bo'lsa
+    is_batch_phrase, cleaned_topic = parse_batch_text_intent(text)
 
     if is_batch_phrase:
+        # A) Xabarning o'zida aniq mavzu/matn berilgan bo'lsa (masalan "Ingliz tili zamonlari har bir mavzuga qilib ber")
+        if cleaned_topic and len(cleaned_topic) >= 2:
+            clean_title = cleaned_topic[:35].replace("\n", " ").strip()
+            save_user_media(message.from_user.id, text_content=cleaned_topic)
+            await state.update_data(
+                batch_text=cleaned_topic,
+                batch_title=clean_title,
+                doc_text=cleaned_topic,
+                doc_title=clean_title,
+                file_bytes=None,
+                file_name=None,
+                mime_type="text/plain",
+            )
+            kb = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(text="3 tadan", callback_data="qbatch:cnt:3"),
+                        InlineKeyboardButton(text="5 tadan", callback_data="qbatch:cnt:5"),
+                    ],
+                    [
+                        InlineKeyboardButton(text="10 tadan", callback_data="qbatch:cnt:10"),
+                        InlineKeyboardButton(text="15 tadan", callback_data="qbatch:cnt:15"),
+                    ],
+                    [
+                        InlineKeyboardButton(text="❌ Bekor qilish", callback_data="menu:home"),
+                    ],
+                ]
+            )
+            await message.answer(
+                f"📚 <b>«{html.escape(clean_title, quote=False)}» — Har bir mavzuga alohida test:</b>\n\n"
+                f"Ushbu sohadagi har bir dars/mavzu uchun nechtadan savol tuzilsin? Tanlang: 👇",
+                reply_markup=kb,
+                parse_mode="HTML",
+            )
+            return
+
+        # B) Foydalanuvchi faqat "har bir mavzuga qilib ber" deb yozgan bo'lsa, oxirgi keshdagi fayl/matnni tekshiramiz
         cached = get_user_media(message.from_user.id)
         if cached and (cached.get("text") or cached.get("bytes")):
             clean_title = cached.get("name") or "Yuklangan hujjat"
@@ -939,9 +1025,50 @@ async def process_plain_text(message: Message, state: FSMContext) -> None:
                 )
                 return
 
+        # C) Keshda fayl ham, mavzu ham bo'lmasa:
         await message.answer(
-            "📁 <b>Marhamat, o'sha PDF yoki Word faylni hozir chatga tashlang!</b>\n\n"
-            "Bot fayldagi barcha dars va mavzularni (masalan, 20 ta mavzuni) avtomatik aniqlab, har biriga alohida testlar to'plamini tuzib beradi.",
+            "✍️ <b>Qaysi mavzular bo'yicha har biriga alohida test tuzilsin?</b>\n\n"
+            "Mavzular nomini chatga yozib yuboring (masalan: <i>Ingliz tili zamonlari</i> yoki <i>1. Mexanika, 2. Dinamika</i>) yoki PDF/Word fayl yuboring!\n\n"
+            "Bot barcha mavzularni avtomatik aniqlab, har biriga alohida testlar to'plamini tuzib beradi.",
+            parse_mode="HTML",
+        )
+        return
+
+    # 2. Agar foydalanuvchi bir nechta mavzular ro'yxatini matn sifatida yuborgan bo'lsa (masalan 1. ... 2. ...)
+    from services.quiz_service import extract_lesson_sections
+    text_sections = extract_lesson_sections(text)
+    if len(text_sections) >= 2:
+        clean_title = text_sections[0]["title"][:30] + " va boshqalar"
+        save_user_media(message.from_user.id, text_content=text)
+        await state.update_data(
+            batch_text=text,
+            batch_title=clean_title,
+            doc_text=text,
+            doc_title=clean_title,
+            file_bytes=None,
+            file_name=None,
+            mime_type="text/plain",
+        )
+        mode_kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="🎯 Bitta umumiy test", callback_data="qdoc_mode:single"),
+                ],
+                [
+                    InlineKeyboardButton(text=f"📚 Har bir mavzuga ({len(text_sections)} ta) alohida testlar", callback_data="qdoc_mode:batch"),
+                ],
+                [
+                    InlineKeyboardButton(text="🔙 Bekor qilish", callback_data="menu:home"),
+                ],
+            ]
+        )
+        await message.answer(
+            f"📄 <b>Matnda {len(text_sections)} ta mavzu/bo'lim aniqlandi!</b>\n\n"
+            f"Qanday test tuzmoqchisiz?\n"
+            f"• 🎯 <b>Bitta umumiy test</b> — barchasidan bitta test\n"
+            f"• 📚 <b>Har bir mavzuga alohida testlar</b> — har bir dars uchun alohida testlar to'plami\n\n"
+            f"<i>Kerakli usulni tanlang:</i> 👇",
+            reply_markup=mode_kb,
             parse_mode="HTML",
         )
         return

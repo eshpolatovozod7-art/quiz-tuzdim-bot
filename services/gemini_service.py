@@ -537,11 +537,14 @@ class GeminiService:
         options_count: int = 4,
         difficulty: str = "medium",
         used_questions: set[str] | None = None,
+        question_count: int | None = None,
     ) -> list[dict[str, Any]]:
         """
         Gemini AI orqali test savollarini generatsiya qilish.
         Mavzu, matn, fayl (audio, video, rasm, pdf/doc matni) qabul qiladi.
         """
+        if question_count is not None:
+            count = question_count
         if not self.client:
             return []
 
@@ -792,10 +795,10 @@ class GeminiService:
 
             models_to_try = [
                 self.model,
-                "gemini-3.5-flash",
-                "gemini-3.5-flash-lite",
-                "gemini-flash-latest",
                 "gemini-flash-lite-latest",
+                "gemini-3.5-flash-lite",
+                "gemini-3.1-flash-lite",
+                "gemini-3.5-flash",
                 "gemini-3.8-flash",
             ]
             seen = set()
@@ -961,7 +964,7 @@ class GeminiService:
         return []
 
     async def extract_topics_from_text(self, text_content: str) -> list[str]:
-        """Hujjatdagi barcha darslar, unitlar yoki mustaqil mavzular ro'yxatini aniqlash."""
+        """Hujjatdagi yoki mavzudagi barcha darslar, unitlar yoki mustaqil mavzular ro'yxatini aniqlash."""
         if not text_content:
             return []
 
@@ -978,16 +981,33 @@ class GeminiService:
         if not self.client:
             return []
 
-        prompt = (
-            "Quyidagi hujjat (darslik, konspekt, qo'llanma yoki lug'at)dagi BARCHA darslar, unitlar, boblar yoki alohida mustaqil mavzular ro'yxatini aniqlang.\n"
-            "QAT'IY TALAB: Javobingiz FAQAT JSON ro'yxati (stringlar massivi) bo'lsin. Har bir element dars yoki mavzuning aniq nomi bo'lsin.\n"
-            "Format namunasi:\n"
-            "[\n"
-            "  \"1-dars: Mavzu nomi\",\n"
-            "  \"2-dars: Mavzu nomi\"\n"
-            "]\n\n"
-            f"HUJJAT MATNI:\n\"\"\"\n{text_content[:60000]}\n\"\"\""
-        )
+        # Agar qisqa mavzu yoki bitta sarlavha bo'lsa (masalan "Ingliz tili zamonlari"), uni kichik darslarga yoyish kerak
+        is_short_topic = len(text_content.strip()) < 500 and text_content.strip().count("\n") < 2
+        if is_short_topic:
+            prompt = (
+                f"«{text_content.strip()}» mavzusi/sohasi bo'yicha har biriga alohida test tuzish uchun "
+                "kamida 4-8 ta eng muhim, aniq va mustaqil kichik darslar/mavzular ro'yxatini tuzib bering.\n"
+                "QAT'IY TALAB: Javobingiz FAQAT JSON ro'yxati (stringlar massivi) bo'lsin. Har bir element aniq dars/mavzu nomi bo'lsin.\n"
+                "Format namunasi:\n"
+                "[\n"
+                "  \"1. Mavzu nomi\",\n"
+                "  \"2. Mavzu nomi\"\n"
+                "]"
+            )
+            sys_instruction = "Berilgan umumiy mavzuni o'rganish uchun alohida kichik darslarga ajrating va JSON ro'yxati qaytaring."
+        else:
+            prompt = (
+                "Quyidagi hujjat (darslik, konspekt, qo'llanma yoki mavzular)dagi BARCHA darslar, unitlar, boblar yoki alohida mustaqil mavzular ro'yxatini aniqlang (kamida 3-10 ta mavzu).\n"
+                "QAT'IY TALAB: Javobingiz FAQAT JSON ro'yxati (stringlar massivi) bo'lsin. Har bir element dars yoki mavzuning aniq nomi bo'lsin.\n"
+                "Format namunasi:\n"
+                "[\n"
+                "  \"1-dars: Mavzu nomi\",\n"
+                "  \"2-dars: Mavzu nomi\"\n"
+                "]\n\n"
+                f"HUJJAT MATNI:\n\"\"\"\n{text_content[:60000]}\n\"\"\""
+            )
+            sys_instruction = "Hujjatdan barcha dars/mavzular nomlari ro'yxatini JSON massivi sifatida aniq ajratib bering."
+
         models_to_try = [
             "gemini-flash-lite-latest",
             "gemini-3.5-flash-lite",
@@ -1000,7 +1020,7 @@ class GeminiService:
         for model_name in unique_models:
             try:
                 config = types.GenerateContentConfig(
-                    system_instruction="Hujjatdan barcha dars/mavzular nomlari ro'yxatini JSON massivi sifatida aniq ajratib bering.",
+                    system_instruction=sys_instruction,
                     response_mime_type="application/json",
                     temperature=0.3,
                     max_output_tokens=4096,
@@ -1029,7 +1049,8 @@ class GeminiService:
                             if t_name and str(t_name).strip():
                                 clean_topics.append(str(t_name).strip())
                     if clean_topics:
-                        return clean_topics[:35]
+                        if len(clean_topics) >= 2 or is_short_topic:
+                            return clean_topics[:35]
             except Exception as e:
                 logger.warning("Mavzularni ajratishda model %s da xatolik: %s", model_name, e)
                 await asyncio.sleep(0.3)
@@ -1176,6 +1197,55 @@ class GeminiService:
                     })
             return result_topics
 
+        # 0-BOSQICH (Eng tez va ishonchli): Hujjatdan dars bo'limlarini regex orqali ajratib olish
+        try:
+            from services.quiz_service import extract_lesson_sections, parse_vocabulary_pairs, generate_vocabulary_quiz_from_pairs
+            sections = extract_lesson_sections(text_content)
+            if len(sections) >= 2:
+                logger.info("Aniq sarlavhalar orqali %d ta dars/mavzu bo'limi aniqlandi.", len(sections))
+                direct_topics = []
+                sem0 = asyncio.Semaphore(2)
+
+                async def process_single_section(sec: dict[str, str]) -> dict[str, Any] | None:
+                    sec_title = sec["title"]
+                    sec_content = sec["content"]
+                    sec_pairs = parse_vocabulary_pairs(sec_content)
+                    if (is_vocab or is_beginner or len(sec_pairs) >= 3) and len(sec_pairs) >= 2:
+                        q_list = generate_vocabulary_quiz_from_pairs(
+                            sec_pairs,
+                            count=questions_per_topic,
+                            options_count=options_count,
+                        )
+                        if q_list:
+                            return {"topic_title": sec_title, "questions": q_list}
+
+                    async with sem0:
+                        try:
+                            q_list = await self.generate_quiz(
+                                topic=sec_title,
+                                text_content=sec_content if len(sec_content) >= 30 else None,
+                                count=questions_per_topic,
+                                options_count=options_count,
+                                difficulty=difficulty,
+                            )
+                            if q_list:
+                                return {"topic_title": sec_title, "questions": q_list}
+                        except Exception as s_err:
+                            logger.warning("Bo'lim '%s' uchun test tuzishda xatolik: %s", sec_title, s_err)
+                    return None
+
+                sec_tasks = [process_single_section(s) for s in sections[:25]]
+                sec_results = await asyncio.gather(*sec_tasks, return_exceptions=True)
+                for sr in sec_results:
+                    if isinstance(sr, dict) and sr.get("questions"):
+                        direct_topics.append(sr)
+
+                if len(direct_topics) >= 2:
+                    logger.info("Dars bo'limlaridan %d ta dars uchun testlar to'liq va tez tuzildi!", len(direct_topics))
+                    return direct_topics
+        except Exception as fast_err:
+            logger.warning("Tezkor dars bo'limlarini tahlil qilishda ogohlantirish: %s", fast_err)
+
         models_to_try = [
             "gemini-flash-lite-latest",
             "gemini-3.5-flash-lite",
@@ -1185,12 +1255,40 @@ class GeminiService:
         seen = set()
         unique_models = [m for m in models_to_try if m and not (m in seen or seen.add(m))]
 
-        # 1-BOSQICH: Hujjatdagi mavzularni avval aniqlash
+        # 1-BOSQICH: Hujjatdagi yoki mavzudagi mavzularni avval aniqlash
         discovered_topics = await self.extract_topics_from_text(text_content)
         logger.info("Batch test uchun %d ta mavzu aniqlandi.", len(discovered_topics))
 
-        # Agar kamida 2 ta mavzu aniqlangan bo'lsa, ularni bo'laklab parallel generatsiya qilamiz
+        # Agar kamida 2 ta mavzu aniqlangan bo'lsa, har biri bo'yicha alohida test tuzamiz
         if len(discovered_topics) >= 2:
+            sem1 = asyncio.Semaphore(2)
+
+            async def process_single_topic(t_name: str) -> dict[str, Any] | None:
+                async with sem1:
+                    try:
+                        q_list = await self.generate_quiz(
+                            topic=t_name,
+                            text_content=text_content[:20000] if len(text_content) > 500 else None,
+                            count=questions_per_topic,
+                            options_count=options_count,
+                            difficulty=difficulty,
+                        )
+                        if q_list:
+                            return {"topic_title": t_name, "questions": q_list}
+                    except Exception as t_err:
+                        logger.warning("Mavzu '%s' uchun test tuzishda xatolik: %s", t_name, t_err)
+                return None
+
+            t_tasks = [process_single_topic(t) for t in discovered_topics[:25]]
+            t_results = await asyncio.gather(*t_tasks, return_exceptions=True)
+            combined_topics = []
+            for tr in t_results:
+                if isinstance(tr, dict) and tr.get("questions"):
+                    combined_topics.append(tr)
+
+            if len(combined_topics) >= 2:
+                logger.info("Jami %d ta mavzu bo'yicha testlar muvaffaqiyatli tuzildi!", len(combined_topics))
+                return combined_topics
             chunk_size = 3 if questions_per_topic >= 10 else 4
             chunks = [discovered_topics[i:i + chunk_size] for i in range(0, len(discovered_topics), chunk_size)]
             logger.info("Mavzular %d ta bo'lakka bo'lindi (har birida ~%d ta mavzu).", len(chunks), chunk_size)

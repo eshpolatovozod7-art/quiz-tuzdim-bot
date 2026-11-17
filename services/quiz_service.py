@@ -657,17 +657,29 @@ def extract_lesson_sections(text: str) -> list[dict[str, str]]:
     if not text:
         return []
 
-    # 1. Standart sarlavhalar: "Lesson 2", "Unit 3:", "1-dars", "Chapter 4"
-    pattern = re.compile(
-        r"(?im)^\s*[#*_]*\s*((?:Lesson|Unit|Dars|Bob|Chapter|Part)\s*(?:[№#]?\s*\d+|[IVXLCDM]+)[\s:.\-–—]+[^\n\r]*)",
+    # 1. Standart va kengaytirilgan sarlavhalar: Lesson, Unit, Dars, Mavzu, Bob, Chapter, Topic, Theme, Bo'lim, Fasl, Paragraf, §
+    pattern1 = re.compile(
+        r"(?im)^\s*[#*_]*\s*(?:"
+        r"(?:Lesson|Unit|Dars|Mavzu|Bob|Chapter|Part|Topic|Theme|Fasl|Bo\'lim|Paragraf|§)\s*(?:[№#]?\s*\d+|[IVXLCDM]+)?[\s:.\-–—]+[^\n\r]*"
+        r"|\d+[\s:.\-–—]+(?:dars|mavzu|darslik|bob|chapter|unit)[^\n\r]*"
+        r"|#{1,3}\s+[^\n\r]+"
+        r")"
     )
-    matches = list(pattern.finditer(text))
+    matches = list(pattern1.finditer(text))
+
     if len(matches) < 2:
-        # 2. Yumshoqroq qidiruv: "Lesson 2", "2-dars", "1. Mavzu"
+        # 2. Raqamlangan sarlavhalar: '1. Sanoq sistemalari', '2. Mantiqiy amallar', '1) Kirish'
         pattern2 = re.compile(
-            r"(?im)^\s*[#*_]*\s*(\d+[\s:.\-–—]+(?:dars|mavzu|darslik)[^\n\r]*|(?:Lesson|Unit|Dars|Bob|Chapter|Part)\s*(?:[№#]?\s*\d+|[IVXLCDM]+)[^\n\r]*)",
+            r"(?im)^\s*[#*_]*\s*(?:\d+|[IVXLCDM]+)[\.\)\-–—]\s+[A-ZА-ЯЁЎҚҒҲA-Za-zА-Яа-яЁёЎўҚқҒғҲҳ][^\n\r]*"
         )
         matches = list(pattern2.finditer(text))
+
+    if len(matches) < 2:
+        # 3. Chiziqcha yoki markerli ro'yxat: '- Present Simple', '• Past Simple'
+        pattern3 = re.compile(
+            r"(?im)^\s*[-•*]\s+[A-ZА-ЯЁЎҚҒҲA-Za-zА-Яа-яЁёЎўҚқҒғҲҳ][^\n\r]*"
+        )
+        matches = list(pattern3.finditer(text))
 
     if len(matches) < 2:
         return []
@@ -675,13 +687,13 @@ def extract_lesson_sections(text: str) -> list[dict[str, str]]:
     sections: list[dict[str, str]] = []
     for i in range(len(matches)):
         m = matches[i]
-        raw_title = m.group(1).strip()
-        clean_title = re.sub(r"^[#*_]+|[#*_]+$", "", raw_title).strip()
+        raw_title = m.group(0).strip()
+        clean_title = re.sub(r"^[#*_•\-\s]+|[#*_•\-\s]+$", "", raw_title).strip()
         start = m.end()
         end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
         content = text[start:end].strip()
-        if content:
-            sections.append({"title": clean_title[:45], "content": content})
+        if content or len(clean_title) >= 3:
+            sections.append({"title": clean_title[:50], "content": content})
     return sections
 
 
