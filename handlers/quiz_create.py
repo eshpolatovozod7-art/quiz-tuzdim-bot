@@ -2,6 +2,7 @@ import html
 import io
 import logging
 import os
+import time
 import uuid
 from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
@@ -588,11 +589,29 @@ async def handle_batch_timer(callback: CallbackQuery, bot: Bot, state: FSMContex
             parse_mode="HTML",
         )
 
+    last_progress_edit = 0.0
+
+    async def update_batch_progress(done: int, total: int) -> None:
+        nonlocal last_progress_edit
+        now = time.time()
+        if status_msg and (now - last_progress_edit >= 1.5 or done == total):
+            last_progress_edit = now
+            try:
+                await status_msg.edit_text(
+                    f"⏳ <b>«{html.escape(clean_title, quote=False)}» tahlil qilinmoqda...</b>\n\n"
+                    f"⚡️ <i>{done}/{total} ta mavzu bo'yicha testlar tayyorlandi...</i>\n\n"
+                    f"<i>Biroz kuting...</i>",
+                    parse_mode="HTML",
+                )
+            except Exception:
+                pass
+
     topics_data = await gemini_service.generate_batch_topic_quizzes(
         text_content=text_content,
         questions_per_topic=cnt,
         options_count=4,
         difficulty=diff,
+        progress_callback=update_batch_progress,
     )
 
     if not topics_data or len(topics_data) < 2:
@@ -606,6 +625,7 @@ async def handle_batch_timer(callback: CallbackQuery, bot: Bot, state: FSMContex
                 questions_per_topic=cnt,
                 options_count=4,
                 difficulty=diff,
+                progress_callback=update_batch_progress,
             )
             if expanded_data and len(expanded_data) >= 2:
                 topics_data = expanded_data

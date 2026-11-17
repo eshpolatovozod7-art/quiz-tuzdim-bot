@@ -798,12 +798,12 @@ class GeminiService:
             contents.append(prompt)
 
             models_to_try = [
-                self.model,
-                "gemini-flash-lite-latest",
-                "gemini-3.5-flash-lite",
                 "gemini-3.1-flash-lite",
+                "gemini-flash-lite-latest",
+                "gemini-3-flash-preview",
+                "gemini-3.5-flash-lite",
+                self.model,
                 "gemini-3.5-flash",
-                "gemini-3.8-flash",
             ]
             seen = set()
             unique_models = [m for m in models_to_try if m and not (m in seen or seen.add(m))]
@@ -1013,7 +1013,9 @@ class GeminiService:
             sys_instruction = "Hujjatdan barcha dars/mavzular nomlari ro'yxatini JSON massivi sifatida aniq ajratib bering."
 
         models_to_try = [
+            "gemini-3.1-flash-lite",
             "gemini-flash-lite-latest",
+            "gemini-3-flash-preview",
             "gemini-3.5-flash-lite",
             self.model,
             "gemini-3.5-flash",
@@ -1067,6 +1069,7 @@ class GeminiService:
         questions_per_topic: int = 5,
         options_count: int = 4,
         difficulty: str = "medium",
+        progress_callback: Any = None,
     ) -> list[dict[str, Any]]:
         """
         Hujjatdagi har bir alohida dars/mavzu/unit uchun alohida testlar to'plamini tuzish.
@@ -1208,9 +1211,12 @@ class GeminiService:
             if len(sections) >= 2:
                 logger.info("Aniq sarlavhalar orqali %d ta dars/mavzu bo'limi aniqlandi.", len(sections))
                 direct_topics = []
-                sem0 = asyncio.Semaphore(2)
+                sem0 = asyncio.Semaphore(4)
+                target_secs = sections[:10]
+                completed_0 = 0
 
                 async def process_single_section(sec: dict[str, str]) -> dict[str, Any] | None:
+                    nonlocal completed_0
                     sec_title = sec["title"]
                     sec_content = sec["content"]
 
@@ -1223,13 +1229,25 @@ class GeminiService:
                                 options_count=options_count,
                                 difficulty=difficulty,
                             )
+                            completed_0 += 1
+                            if progress_callback:
+                                try:
+                                    await progress_callback(completed_0, len(target_secs))
+                                except Exception:
+                                    pass
                             if q_list:
                                 return {"topic_title": sec_title, "questions": q_list}
                         except Exception as s_err:
                             logger.warning("Bo'lim '%s' uchun test tuzishda xatolik: %s", sec_title, s_err)
+                            completed_0 += 1
+                            if progress_callback:
+                                try:
+                                    await progress_callback(completed_0, len(target_secs))
+                                except Exception:
+                                    pass
                     return None
 
-                sec_tasks = [process_single_section(s) for s in sections[:25]]
+                sec_tasks = [process_single_section(s) for s in target_secs]
                 sec_results = await asyncio.gather(*sec_tasks, return_exceptions=True)
                 for sr in sec_results:
                     if isinstance(sr, dict) and sr.get("questions"):
@@ -1242,7 +1260,9 @@ class GeminiService:
             logger.warning("Tezkor dars bo'limlarini tahlil qilishda ogohlantirish: %s", fast_err)
 
         models_to_try = [
+            "gemini-3.1-flash-lite",
             "gemini-flash-lite-latest",
+            "gemini-3-flash-preview",
             "gemini-3.5-flash-lite",
             self.model,
             "gemini-3.5-flash",
@@ -1256,9 +1276,12 @@ class GeminiService:
 
         # Agar kamida 2 ta mavzu aniqlangan bo'lsa, har biri bo'yicha alohida test tuzamiz
         if len(discovered_topics) >= 2:
-            sem1 = asyncio.Semaphore(2)
+            sem1 = asyncio.Semaphore(4)
+            target_topics = discovered_topics[:10]
+            completed_1 = 0
 
             async def process_single_topic(t_name: str) -> dict[str, Any] | None:
+                nonlocal completed_1
                 async with sem1:
                     try:
                         q_list = await self.generate_quiz(
@@ -1268,13 +1291,25 @@ class GeminiService:
                             options_count=options_count,
                             difficulty=difficulty,
                         )
+                        completed_1 += 1
+                        if progress_callback:
+                            try:
+                                await progress_callback(completed_1, len(target_topics))
+                            except Exception:
+                                pass
                         if q_list:
                             return {"topic_title": t_name, "questions": q_list}
                     except Exception as t_err:
                         logger.warning("Mavzu '%s' uchun test tuzishda xatolik: %s", t_name, t_err)
+                        completed_1 += 1
+                        if progress_callback:
+                            try:
+                                await progress_callback(completed_1, len(target_topics))
+                            except Exception:
+                                pass
                 return None
 
-            t_tasks = [process_single_topic(t) for t in discovered_topics[:25]]
+            t_tasks = [process_single_topic(t) for t in target_topics]
             t_results = await asyncio.gather(*t_tasks, return_exceptions=True)
             combined_topics = []
             for tr in t_results:
