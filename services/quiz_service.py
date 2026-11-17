@@ -698,11 +698,11 @@ def extract_lesson_sections(text: str) -> list[dict[str, str]]:
 
 
 def parse_vocabulary_pairs(text: str) -> list[tuple[str, str]]:
-    """Matndan so'z-tarjima juftliklarini ajratib olish (lug'at ro'yxati)."""
+    """Matndan so'z-tarjima juftliklarini ajratib olish (aniq ajratgich bilan yozilgan lug'at ro'yxati)."""
     if not text:
         return []
     lines = [line.strip() for line in text.splitlines() if line.strip()]
-    splitter = re.compile(r"\s*(?:->|=>|[-–—:=•/|]|\t|\s{2,}|\s+-\s+)\s*")
+    splitter = re.compile(r"\s*(?:->|=>|[-–—:=/|]|\t|\s+-\s+)\s*")
     clean_prefix = re.compile(r"^[\d+•\-\*]+[\.\)]?\s*")
     transcription_pat = re.compile(r"\[.*?\]|\(.*?\)")
     pairs: list[tuple[str, str]] = []
@@ -713,14 +713,9 @@ def parse_vocabulary_pairs(text: str) -> list[tuple[str, str]]:
             left = transcription_pat.sub("", left).strip(" \"'.,;")
             right = transcription_pat.sub("", parts[1]).strip(" \"'.,;")
             if left and right and len(left) <= 60 and len(right) <= 80:
-                pairs.append((left, right))
-        elif len(parts) == 1:
-            # Agar chiziqcha yoki maxsus belgisiz, masalan "water suv" yozilgan bo'lsa
-            tokens = clean_prefix.sub("", parts[0]).split()
-            if len(tokens) == 2:
-                left = tokens[0].strip(" \"'.,;")
-                right = tokens[1].strip(" \"'.,;")
-                if left and right and len(left) <= 40 and len(right) <= 40:
+                has_en_left = bool(re.search(r"^[a-zA-Z\s\-']+$", left))
+                has_en_right = bool(re.search(r"^[a-zA-Z\s\-']+$", right))
+                if has_en_left or has_en_right:
                     pairs.append((left, right))
     return pairs
 

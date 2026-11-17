@@ -138,14 +138,18 @@ def is_vocabulary_content(
     filename: str | None = None,
 ) -> bool:
     """Foydalanuvchi ingliz tili lug'at ro'yxati (vocabulary list / word - translation) yuborganini aniqlash."""
+    # Agar bu grammatika, zamonlar yoki formulalar bo'lsa, lug'at deb xato hisoblanmasin
+    if is_english_grammar_or_formula_content(topic=topic, text=text, filename=filename):
+        return False
+
     combined = f"{topic or ''} {filename or ''}".lower()
     vocab_keywords = [
         "vocabulary", "vocablry", "vocab", "lug'at", "lugat", "lug‘at", "lug`at",
-        "words list", "word list", "wordlist", "words", "word",
-        "so'zlar ro'yxati", "sozlar royxati", "so'zlar", "sozlar", "so'z", "soz",
+        "words list", "word list", "wordlist",
+        "so'zlar ro'yxati", "sozlar royxati", "so'zlar", "sozlar",
         "so'z boyligi", "soz boyligi", "phrasal verbs", "idioms",
         "essential words", "inglizcha so'z", "english words",
-        "tarjima", "tarjimalar", "dictionary", "glossary", "lexis"
+        "dictionary", "glossary", "lexis"
     ]
     if any(k in combined for k in vocab_keywords):
         return True
@@ -159,7 +163,7 @@ def is_vocabulary_content(
 
     from services.quiz_service import parse_vocabulary_pairs
     pairs = parse_vocabulary_pairs(raw_text)
-    if len(pairs) >= 2:
+    if len(pairs) >= 5:
         return True
 
     lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
@@ -167,11 +171,11 @@ def is_vocabulary_content(
         r"^([\d+•\-\*]+[\.\)]?\s*)?"
         r"[a-zA-Zа-яА-ЯёЁўқғҳЎҚҒҲʻʼ']"
         r"[a-zA-Zа-яА-ЯёЁўқғҳЎҚҒҲʻʼ'\s\(\)/]{0,40}\s*"
-        r"(?:->|=>|[-–—:=/•|]|\t|\s{2,})\s*"
+        r"(?:->|=>|[-–—:=/|]|\t)\s*"
         r".+$"
     )
     matching_lines = sum(1 for line in lines if vocab_line_pattern.match(line))
-    if len(lines) >= 2 and matching_lines >= max(2, int(len(lines) * 0.30)):
+    if len(lines) >= 4 and matching_lines >= max(4, int(len(lines) * 0.40)):
         return True
 
     return False
@@ -1197,9 +1201,9 @@ class GeminiService:
                     })
             return result_topics
 
-        # 0-BOSQICH (Eng tez va ishonchli): Hujjatdan dars bo'limlarini regex orqali ajratib olish
+        # 0-BOSQICH (Aniq bo'limlar): Hujjatdan dars bo'limlarini regex orqali ajratib olish va AI orqali test tuzish
         try:
-            from services.quiz_service import extract_lesson_sections, parse_vocabulary_pairs, generate_vocabulary_quiz_from_pairs
+            from services.quiz_service import extract_lesson_sections
             sections = extract_lesson_sections(text_content)
             if len(sections) >= 2:
                 logger.info("Aniq sarlavhalar orqali %d ta dars/mavzu bo'limi aniqlandi.", len(sections))
@@ -1209,15 +1213,6 @@ class GeminiService:
                 async def process_single_section(sec: dict[str, str]) -> dict[str, Any] | None:
                     sec_title = sec["title"]
                     sec_content = sec["content"]
-                    sec_pairs = parse_vocabulary_pairs(sec_content)
-                    if (is_vocab or is_beginner or len(sec_pairs) >= 3) and len(sec_pairs) >= 2:
-                        q_list = generate_vocabulary_quiz_from_pairs(
-                            sec_pairs,
-                            count=questions_per_topic,
-                            options_count=options_count,
-                        )
-                        if q_list:
-                            return {"topic_title": sec_title, "questions": q_list}
 
                     async with sem0:
                         try:
