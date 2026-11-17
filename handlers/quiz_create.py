@@ -563,25 +563,20 @@ async def handle_batch_timer(callback: CallbackQuery, bot: Bot, state: FSMContex
             except Exception:
                 pass
 
-        from services.quiz_service import parse_vocabulary_pairs, generate_vocabulary_quiz_from_pairs
-        v_pairs = parse_vocabulary_pairs(text_content)
-        single_questions = []
-        is_vocab = is_vocabulary_content(topic=clean_title, text=text_content)
-        is_beg = diff in ("easy", "beginner")
         target_cnt = max(cnt, 10)
-        if (is_vocab or is_beg) and len(v_pairs) >= 2:
-            single_questions = generate_vocabulary_quiz_from_pairs(
-                v_pairs,
+        single_questions = await gemini_service.generate_quiz(
+            topic=clean_title,
+            text_content=text_content,
+            count=target_cnt,
+            options_count=4,
+            difficulty=diff,
+        )
+        if not single_questions:
+            from services.quiz_service import get_offline_quiz_questions
+            single_questions = get_offline_quiz_questions(
+                topic=clean_title,
                 count=target_cnt,
                 options_count=4,
-            )
-        if not single_questions:
-            single_questions = await gemini_service.generate_quiz(
-                topic=clean_title,
-                text_content=text_content,
-                question_count=target_cnt,
-                options_count=4,
-                difficulty=diff,
             )
 
         if single_questions:

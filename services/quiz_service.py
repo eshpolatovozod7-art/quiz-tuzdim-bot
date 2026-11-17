@@ -795,16 +795,6 @@ def get_offline_quiz_questions(
     text_content: str | None = None,
 ) -> list[dict[str, Any]]:
     """Mavzuga mos oflayn zaxira savollarni olish va variantlarni aralashtirish."""
-    # Agar matnda lug'at ro'yxati (vocabulary) bo'lsa, to'g'ridan-to'g'ri o'sha so'zlardan savol tuzish
-    if text_content:
-        pairs = parse_vocabulary_pairs(text_content)
-        if len(pairs) >= 2:
-            return generate_vocabulary_quiz_from_pairs(
-                pairs=pairs,
-                count=count,
-                options_count=options_count,
-                used_questions=used_questions,
-            )
     lower = (topic or "").lower()
     cat = "umumiy"
     if any(k in lower for k in ["matem", "algebra", "hisob", "geometr", "integral", "kvadrat tenglama", "kasr", "progressiya"]):

@@ -348,21 +348,21 @@ VOCABULARY_BEGINNER_DIRECTIVE = (
     "- Beginner darajadagi o'quvchi ingliz tilidagi uzun va murakkab gaplarni, qiyin grammatikani bilmaydi!\n"
     "- Shuning uchun bu darajada uzun murakkab gaplar, chigal gap to'ldirish (cloze) testlari ASLO TUZILMASIN!\n"
     "- Savollar xuddi maktab darsligidagi kabi O'TA ODDIY, TO'G'RIDAN-TO'G'RI SO'Z-TARJIMA va MA'NO shaklida bo'lsin:\n\n"
-    "1. SAVOL SHAKLLARI (savollarni aralash qilib tuzing):\n"
-    "   a) O'zbekcha so'zning inglizcha tarjimasi:\n"
+    "1. SAVOL VA VARIANTLARNING TIL MOSLIGI (MUTLAQO ARALASHTIRILMASIN):\n"
+    "   a) O'zbekcha so'zning inglizcha tarjimasi so'ralsa:\n"
     "      Masalan: '«suv» so\\'zining inglizcha tarjimasi qaysi?' -> Variantlar: ['water', 'milk', 'bread', 'tea']\n"
     "      Masalan: '«kitob» so\\'zi ingliz tilida nima deyiladi?' -> Variantlar: ['book', 'pen', 'desk', 'bag']\n"
-    "      Masalan: '«olma» — to\\'g\\'ri inglizcha tarjimani tanlang:' -> Variantlar: ['apple', 'orange', 'banana', 'lemon']\n"
-    "   b) Inglizcha so'zning o'zbekcha ma'nosi:\n"
+    "      DIQQAT: Savolda o'zbekcha so'z berilsa, to'g'ri javob ham, qolgan 3 ta chalg'ituvchi variant ham FAQAT INGLIZCHA bo'lishi shart!\n"
+    "   b) Inglizcha so'zning o'zbekcha ma'nosi so'ralsa:\n"
     "      Masalan: '«water» so\\'zining ma\\'nosi nima?' -> Variantlar: ['suv', 'non', 'choy', 'sut']\n"
     "      Masalan: '«cat» so\\'zining o\\'zbekcha tarjimasini toping:' -> Variantlar: ['mushuk', 'kuchuk', 'qush', 'baliq']\n"
-    "   c) Oddiy so'z juftligi / moslik:\n"
-    "      Masalan: 'Qaysi juftlik to\\'g\\'ri?' -> Variantlar: ['suv - water', 'non - pen', 'kitob - milk', 'maktab - dog']\n"
-    "      yoki: '«suv» — ...' -> Variantlar: ['water', 'fire', 'air', 'earth']\n\n"
-    "2. VARIANTLAR (OPTIONS):\n"
+    "      DIQQAT: Savolda inglizcha so'z berilsa, to'g'ri javob ham, qolgan 3 ta chalg'ituvchi variant ham FAQAT O'ZBEKCHA bo'lishi shart!\n"
+    "      ❌ QO'POL XATO: '«Good» so'zi qanday tarjima qilinadi?' deb so'rab, variantlarga ['many', 'job', 'much', 'player'] qo'yish MUTLAQO TAQIQLANADI! To'g'ri variantlar: ['yaxshi', 'yomon', 'katta', 'chiroyli']!\n"
+    "      ❌ QO'POL XATO: '«board» so'zining inglizcha tarjimasi qaysi?' deb so'rab, variantlarga ['Inkor', 'Zo\\'r', 'White', 'Football'] kabi aralash variantlar qo'yish MUTLAQO TAQIQLANADI! Inglizcha 'board' so'ralganda '«board» so'zining o'zbekcha ma'nosi nima?' deb so'ralishi va variantlar faqat o'zbekcha bo'lishi kerak: ['doska', 'stol', 'eshik', 'parta']!\n\n"
+    "2. VARIANTLAR VA TO'G'RI JAVOB HAQIQIY LUG'AVIY MA'NOGA EGA BO'LSIN:\n"
     "   - Har bir variant lo'nda va qisqa (1 ta so'z yoki qisqa ibora) bo'lsin.\n"
-    "   - To'g'ri javob berilgan lug'atdagi so'z yoki uning tarjimasi bo'lsin.\n"
-    "   - Noto'g'ri variantlar (distractors) ham taqdim etilgan lug'atdagi boshqa so'zlardan yoki boshlang'ich darajaga mos boshqa oddiy so'zlardan tuzilsin.\n\n"
+    "   - To'g'ri javob so'zning haqiqiy lug'aviy tarjimasi bo'lishi SHART (masalan: Good -> yaxshi; board -> doska; job -> ish/kasb; white -> oq).\n"
+    "   - Chalg'ituvchi variantlar ham xuddi shu tilda (agar javob o'zbekcha bo'lsa faqat o'zbekcha, agar javob inglizcha bo'lsa faqat inglizcha) va boshlang'ich darajaga mos bo'lsin.\n\n"
     "3. IZOH (EXPLANATION):\n"
     "   - O'zbek tilida, samimiy va o'rgatuvchi bo'lsin (maksimal 180 belgi).\n"
     "   - Masalan: '💡 water — suv degani. Boshqa variantlar: milk — sut, bread — non, tea — choy.'\n"
@@ -680,9 +680,10 @@ class GeminiService:
                 f"(Masalan: '💡 water — suv degani. Boshqa variantlar: bread — non, milk — sut.').\n"
             )
             rule6_clause = (
-                f"6. Savollar shakli: O'zbekcha so'zning inglizcha tarjimasi (masalan: «suv» so'zi ingliz tilida nima deyiladi? -> water) "
-                f"yoki inglizcha so'zning o'zbekcha ma'nosi (masalan: «water» so'zining ma'nosi nima? -> suv). "
-                f"Variantlar lo'nda va faqat 1 ta so'zdan iborat bo'lsin.\n"
+                f"6. Savollar shakli va til mosligi (QAT'IY TALAB):\n"
+                f"   - Agar savolda inglizcha so'z berilsa (masalan: «water» so'zining ma'nosi nima? yoki «Good» so'zi qanday tarjima qilinadi?), to'g'ri javob ham, barcha variantlar ham FAQAT O'ZBEKCHA bo'lsin: ['yaxshi', 'yomon', 'katta', 'chiroyli'].\n"
+                f"   - Agar savolda o'zbekcha so'z berilsa (masalan: «suv» so'zining inglizcha tarjimasi qaysi?), to'g'ri javob ham, barcha variantlar ham FAQAT INGLIZCHA bo'lsin: ['water', 'milk', 'bread', 'tea'].\n"
+                f"   - Variantlar ichida tillarni aralashtirish yoki so'zga uning tarjimasi bo'lmagan so'zni to'g'ri javob qilish QAT'IYAN TAQIQLANADI! Variantlar lo'nda va faqat 1 ta so'zdan iborat bo'lsin.\n"
             )
             sample_expl = "💡 water — suv degani."
         else:
@@ -1175,34 +1176,6 @@ class GeminiService:
                     })
             return result_topics
 
-        # 0-BOSQICH (Eng tez va 100% ishonchli): Hujjatdan dars bo'limlarini regex orqali ajratib olish
-        try:
-            from services.quiz_service import extract_lesson_sections, parse_vocabulary_pairs, generate_vocabulary_quiz_from_pairs
-            sections = extract_lesson_sections(text_content)
-            if len(sections) >= 2:
-                logger.info("Aniq sarlavhalar orqali %d ta dars/mavzu bo'limi aniqlandi.", len(sections))
-                direct_topics = []
-                for sec in sections:
-                    sec_title = sec["title"]
-                    sec_content = sec["content"]
-                    sec_pairs = parse_vocabulary_pairs(sec_content)
-                    if (is_vocab or is_beginner or len(sec_pairs) >= 3) and len(sec_pairs) >= 2:
-                        q_list = generate_vocabulary_quiz_from_pairs(
-                            sec_pairs,
-                            count=questions_per_topic,
-                            options_count=options_count,
-                        )
-                        if q_list:
-                            direct_topics.append({
-                                "topic_title": sec_title,
-                                "questions": q_list,
-                            })
-                if len(direct_topics) >= 2:
-                    logger.info("Lug'at juftliklaridan %d ta dars uchun testlar to'liq va tez tuzildi!", len(direct_topics))
-                    return direct_topics
-        except Exception as fast_err:
-            logger.warning("Tezkor dars bo'limlarini tahlil qilishda ogohlantirish: %s", fast_err)
-
         models_to_try = [
             "gemini-flash-lite-latest",
             "gemini-3.5-flash-lite",
@@ -1264,7 +1237,10 @@ class GeminiService:
                     batch_sys_instruction = (
                         "Siz tajribali ingliz tili o'qituvchisisiz. Boshlang'ich (Beginner / Oson) darajadagi o'quvchilar uchun "
                         "taqdim etilgan lug'at ro'yxatidagi har bir dars/mavzu bo'yicha sodda so'z-tarjima va ma'no testlarini (masalan: '«water» so\\'zining ma\\'nosi nima?' -> 'suv') JSON ro'yxatida tuzib bering. "
-                        "Uzun murakkab gaplar yoki qiyin grammatikadan mutlaqo saqlaning. Savollar sodda, variantlar lo'nda bitta so'zdan iborat bo'lsin."
+                        "Uzun murakkab gaplar yoki qiyin grammatikadan mutlaqo saqlaning. Savollar sodda, variantlar lo'nda bitta so'zdan iborat bo'lsin. "
+                        "QAT'IY TALAB: Savol inglizcha so'z bo'lsa («Good» so'zining ma'nosi nima?), to'g'ri javob ham, barcha variantlar ham FAQAT O'ZBEKCHA bo'lsin: ['yaxshi', 'yomon', 'katta', 'chiroyli']. "
+                        "Savol o'zbekcha so'z bo'lsa («doska» so'zining inglizcha tarjimasi qaysi?), to'g'ri javob ham, barcha variantlar ham FAQAT INGLIZCHA bo'lsin: ['board', 'desk', 'chair', 'table']. "
+                        "Variantlar ichida tillarni aslo aralashtirmang va har bir so'zning haqiqiy to'g'ri lug'aviy tarjimasini to'g'ri javob qilib belgilang."
                     )
                 else:
                     batch_sys_instruction = (
@@ -1350,7 +1326,10 @@ class GeminiService:
             single_sys_instruction = (
                 "Siz tajribali ingliz tili o'qituvchisisiz. Boshlang'ich (Beginner / Oson) darajadagi o'quvchilar uchun "
                 "taqdim etilgan lug'at ro'yxatidagi barcha dars/mavzular bo'yicha sodda so'z-tarjima va ma'no testlarini (masalan: '«water» so\\'zining ma\\'nosi nima?' -> 'suv') JSON ro'yxatida to'liq tuzib bering. "
-                "Uzun murakkab gaplar yoki qiyin grammatikadan mutlaqo saqlaning. Savollar sodda, variantlar lo'nda bitta so'zdan iborat bo'lsin."
+                "Uzun murakkab gaplar yoki qiyin grammatikadan mutlaqo saqlaning. Savollar sodda, variantlar lo'nda bitta so'zdan iborat bo'lsin. "
+                "QAT'IY TALAB: Savol inglizcha so'z bo'lsa («Good» so'zining ma'nosi nima?), to'g'ri javob ham, barcha variantlar ham FAQAT O'ZBEKCHA bo'lsin: ['yaxshi', 'yomon', 'katta', 'chiroyli']. "
+                "Savol o'zbekcha so'z bo'lsa («doska» so'zining inglizcha tarjimasi qaysi?), to'g'ri javob ham, barcha variantlar ham FAQAT INGLIZCHA bo'lsin: ['board', 'desk', 'chair', 'table']. "
+                "Variantlar ichida tillarni aslo aralashtirmang va har bir so'zning haqiqiy to'g'ri lug'aviy tarjimasini to'g'ri javob qilib belgilang."
             )
         else:
             single_sys_instruction = (
