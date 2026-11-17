@@ -1279,6 +1279,7 @@ async def handle_qcfg_timer(callback: CallbackQuery, bot: Bot, state: FSMContext
             parse_mode="HTML",
         )
 
+    file_bytes: bytes | None = None
     # Agar manba "topic" bo'lsa, keshdagi eski fayl/matn aralashmasligi kerak
     if source_type == "topic":
         if topic and is_vocabulary_content(text=topic):
@@ -1297,7 +1298,7 @@ async def handle_qcfg_timer(callback: CallbackQuery, bot: Bot, state: FSMContext
     else:
         cached_media = get_user_media(user_id)
         if cached_media:
-            file_bytes = file_bytes or cached_media.get("bytes")
+            file_bytes = cached_media.get("bytes")
             file_mime = file_mime or cached_media.get("mime")
             file_name = file_name or cached_media.get("name")
             text_content = text_content or cached_media.get("text")
@@ -1306,17 +1307,21 @@ async def handle_qcfg_timer(callback: CallbackQuery, bot: Bot, state: FSMContext
     used_q = await get_user_used_questions(user_id, source_label)
 
     # Gemini orqali test tuzish
-    questions = await gemini_service.generate_quiz(
-        topic=topic,
-        text_content=text_content,
-        file_bytes=file_bytes,
-        file_mime=file_mime,
-        file_name=file_name,
-        count=cnt,
-        options_count=opts,
-        difficulty=diff,
-        used_questions=used_q,
-    )
+    try:
+        questions = await gemini_service.generate_quiz(
+            topic=topic,
+            text_content=text_content,
+            file_bytes=file_bytes,
+            file_mime=file_mime,
+            file_name=file_name,
+            count=cnt,
+            options_count=opts,
+            difficulty=diff,
+            used_questions=used_q,
+        )
+    except Exception as g_err:
+        logger.error("Gemini test tuzishda xatolik: %s", g_err, exc_info=True)
+        questions = []
 
     # Agar AI dan savol kelmasa -> Oflayn zaxira bazadan olish
     if not questions:
