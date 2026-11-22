@@ -14,6 +14,8 @@ __pycache__/
 data/exports/*
 data/uploads/*
 data/*.bak*
+data/archive_old_quizzes/*
+data/quiz_bot_backup.db
 !data/exports/.gitkeep
 !data/uploads/.gitkeep
 
