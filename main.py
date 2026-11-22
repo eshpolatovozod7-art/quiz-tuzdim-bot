@@ -53,18 +53,18 @@ async def start_health_server(port: int) -> web.AppRunner:
 
 
 async def start_keep_alive(app_url: str) -> None:
-    """Render bepul tarifida botni avtomatik uyg'oq tutish (Self Keep-Alive)."""
+    """Render bepul tarifida botni avtomatik uyg'oq tutish (Self Keep-Alive har 3 daqiqada)."""
     url = app_url.rstrip("/") + "/health"
-    logger.info("Self keep-alive ishga tushirildi: %s", url)
-    await asyncio.sleep(60)
+    logger.info("Self keep-alive ishga tushirildi (interval: 180s): %s", url)
+    await asyncio.sleep(20)
     while True:
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-                    logger.debug("Keep-alive ping yuborildi, javob: %s", resp.status)
+                    logger.debug("Keep-alive ping muvaffaqiyatli: %s (status: %d)", url, resp.status)
         except Exception as e:
-            logger.debug("Keep-alive ping xatosi (muhim emas): %s", e)
-        await asyncio.sleep(720)  # Har 12 daqiqada ping qilish (15 daqiqali limitdan oldin)
+            logger.debug("Keep-alive ping ogohlantirish: %s", e)
+        await asyncio.sleep(180)  # Har 3 daqiqada ping qilish (Render 15 daqiqalik uyqu limitidan ancha oldin)
 
 
 async def set_bot_commands(bot: Bot) -> None:
@@ -113,9 +113,8 @@ async def main() -> None:
         except Exception as web_err:
             logger.warning("Veb-serverni ishga tushirishda xatolik: %s", web_err)
 
-    render_url = os.getenv("RENDER_EXTERNAL_URL")
-    if render_url:
-        keep_alive_task = asyncio.create_task(start_keep_alive(render_url))
+    render_url = os.getenv("RENDER_EXTERNAL_URL") or "https://quiz-tuzdim-bot.onrender.com"
+    keep_alive_task = asyncio.create_task(start_keep_alive(render_url))
 
     bot = Bot(
         token=BOT_TOKEN,
