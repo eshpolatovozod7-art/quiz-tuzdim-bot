@@ -590,6 +590,10 @@ def get_my_quizzes_keyboard(
         InlineKeyboardButton(text=created_tab_text, callback_data="history:tab:created:1"),
         InlineKeyboardButton(text=taken_tab_text, callback_data="history:tab:taken:1"),
     ])
+    rows.append([
+        InlineKeyboardButton(text="📁 To'plamlar", callback_data="history:tab:batches:1"),
+        InlineKeyboardButton(text="🔍 Test qidirish", callback_data="history:search"),
+    ])
 
     # 2. Joriy sahifadagi testlar
     start_num = (page - 1) * 6 + 1
@@ -647,8 +651,12 @@ def get_my_quizzes_categories_keyboard(
 
     # 1. Tablar: To'plamlar vs Barcha testlar vs Ishlaganlarim
     rows.append([
-        InlineKeyboardButton(text=f"📋 Barcha testlar ({created_count})", callback_data="history:tab:created:1"),
+        InlineKeyboardButton(text=f"📝 Tuzganlarim ({created_count})", callback_data="history:tab:created:1"),
         InlineKeyboardButton(text=f"🎯 Ishlaganlarim ({taken_count})", callback_data="history:tab:taken:1"),
+    ])
+    rows.append([
+        InlineKeyboardButton(text="🟢 📁 To'plamlar", callback_data="history:tab:batches:1"),
+        InlineKeyboardButton(text="🔍 Test qidirish", callback_data="history:search"),
     ])
 
     # 2. Har bir to'plam uchun chiroyli tugma (1-chi yaratgan testlar, 2-chi...)
@@ -722,8 +730,33 @@ def get_batch_quizzes_keyboard(
 
     # 3. Ortga qaytish
     rows.append([
-        InlineKeyboardButton(text="◀️ To'plamlar ro'yxatiga qaytish", callback_data="menu:history"),
+        InlineKeyboardButton(text="◀️ To'plamlar ro'yxatiga qaytish", callback_data="history:tab:batches:1"),
         InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="menu:home"),
     ])
 
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def get_search_results_keyboard(quizzes: list[dict[str, Any]]) -> InlineKeyboardMarkup:
+    """Qidiruv natijalari klaviaturasi."""
+    rows = []
+    for idx, q in enumerate(quizzes, start=1):
+        q_id = q["quiz_id"]
+        raw_title = q.get("title", "Test")
+        title = raw_title[:23] + "..." if len(raw_title) > 26 else raw_title
+        count = q.get("question_count", len(q.get("questions", [])))
+        tm = q.get("timer_seconds", 0)
+        tm_str = "Cheksiz" if tm == 0 else f"{tm}s"
+        btn_text = f"{idx}. 🎯 {title} ({count} ta, ⏱ {tm_str})"
+        rows.append([
+            InlineKeyboardButton(text=btn_text, callback_data=f"qopen:{q_id}")
+        ])
+
+    rows.append([
+        InlineKeyboardButton(text="🔍 Yangi qidiruv", callback_data="history:search"),
+        InlineKeyboardButton(text="📜 Mening testlarim", callback_data="menu:history"),
+    ])
+    rows.append([
+        InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="menu:home"),
+    ])
     return InlineKeyboardMarkup(inline_keyboard=rows)

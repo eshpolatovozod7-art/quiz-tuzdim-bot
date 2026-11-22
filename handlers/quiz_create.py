@@ -656,6 +656,7 @@ async def handle_batch_timer(callback: CallbackQuery, bot: Bot, state: FSMContex
                 topic=clean_title,
                 count=target_cnt,
                 options_count=4,
+                text_content=text_content,
             )
 
         if single_questions:

@@ -104,6 +104,15 @@ async def download_cloud_db() -> bool:
                     logger.info("✅ Cloud bazadan %d ta test (%d bayt) muvaffaqiyatli tiklandi: %s", cloud_count, len(db_bytes), DB_PATH)
                     return True
 
+                elif resp.status == 401:
+                    logger.error(
+                        "🚨 Cloud Sync XATOSI (401 Unauthorized): GITHUB_TOKEN eskirgan yoki ruxsat yo'q!\n"
+                        "Render qayta ishga tushganda ma'lumotlar o'chib ketmasligi uchun:\n"
+                        "1) GitHub -> Settings -> Developer Settings -> Personal access tokens (classic) -> yangi token oling ('repo' ruxsati bilan)\n"
+                        "2) Render Dashboard -> Environment Variables da GITHUB_TOKEN ni yangilang.\n"
+                        "Hozirda barcha ma'lumotlar lokal bazada saqlanmoqda. Shuningdek, /backup buyrug'i orqali istalgan vaqtda Telegramga zaxira faylni yuklab olishingiz mumkin."
+                    )
+                    return False
                 elif resp.status == 404:
                     logger.info("Cloud Sync: Omborida hali quiz_bot.db mavjud emas, noldan boshlanadi.")
                     return False
@@ -167,6 +176,9 @@ async def upload_cloud_db(commit_message: str = "Auto-sync database update [skip
                             logger.info("✅ Cloud bazaga yangilanish saqlandi! (Hajm: %d bayt, SHA: %s)", len(content_bytes), new_sha)
                             _is_dirty = False
                             return True
+                        elif put_resp.status == 401 or (get_resp and get_resp.status == 401):
+                            logger.error("🚨 Cloud Sync: GITHUB_TOKEN yaroqsiz (401 Unauthorized), bulutga saqlab bo'lmadi.")
+                            return False
                         elif put_resp.status == 409 and attempt == 0:
                             logger.warning("Cloud Sync: 409 SHA to'qnashuvi, qayta urinilmoqda...")
                             await asyncio.sleep(1.0)

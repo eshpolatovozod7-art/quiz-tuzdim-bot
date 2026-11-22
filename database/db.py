@@ -139,6 +139,44 @@ async def init_db() -> None:
             pass
 
         await db.commit()
+
+        # Agar quizzes jadvali bo'sh bo'lsa (masalan Render restart yoki resetdan so'ng),
+        # zaxira fayllardan (quiz_bot_backup.db yoki *.bak) avtomatik tiklaymiz
+        try:
+            async with db.execute("SELECT COUNT(*) FROM quizzes") as cursor:
+                q_count = (await cursor.fetchone())[0]
+            if q_count == 0:
+                backup_files = [
+                    DB_PATH.parent / "quiz_bot_backup.db",
+                    DB_PATH.parent / "quiz_bot.bak_before_reset",
+                    *sorted(DB_PATH.parent.glob("*.bak*"), reverse=True),
+                ]
+                for b_file in backup_files:
+                    if b_file.exists() and b_file != DB_PATH and b_file.stat().st_size > 1000:
+                        try:
+                            import sqlite3
+                            with sqlite3.connect(str(b_file), timeout=2.0) as b_conn:
+                                b_cur = b_conn.cursor()
+                                b_cur.execute("SELECT count(*) FROM quizzes")
+                                b_cnt = b_cur.fetchone()[0]
+                            if b_cnt > 0:
+                                logger.info("Bo'sh baza aniqlandi! %s dan %d ta test avtomatik tiklanmoqda...", b_file.name, b_cnt)
+                                await db.execute(f"ATTACH DATABASE '{b_file}' AS backup_db")
+                                await db.execute("INSERT OR IGNORE INTO quizzes SELECT * FROM backup_db.quizzes")
+                                for tbl in ["users", "quiz_attempts", "used_questions", "group_scores", "duels"]:
+                                    try:
+                                        await db.execute(f"INSERT OR IGNORE INTO {tbl} SELECT * FROM backup_db.{tbl}")
+                                    except Exception:
+                                        pass
+                                await db.execute("DETACH DATABASE backup_db")
+                                await db.commit()
+                                logger.info("✅ %d ta test muvaffaqiyatli zaxira nusxadan tiklandi!", b_cnt)
+                                break
+                        except Exception as e:
+                            logger.warning("%s dan tiklashda xatolik: %s", b_file, e)
+        except Exception as auto_restore_err:
+            logger.warning("Avtotiklash tekshiruvida xatolik: %s", auto_restore_err)
+
         await _backfill_batches(db)
     logger.info("Ma'lumotlar bazasi tayyor: %s", DB_PATH)
 
@@ -213,6 +251,17 @@ async def increment_user_tests_created(user_id: int) -> None:
         await db.commit()
 
 
+def _make_local_backup() -> None:
+    """Lokal xavfsizlik uchun data/quiz_bot_backup.db ga avtomatik nusxa ko'chirish."""
+    try:
+        import shutil
+        backup_path = DB_PATH.parent / "quiz_bot_backup.db"
+        if DB_PATH.exists() and DB_PATH.stat().st_size > 1000:
+            shutil.copy2(DB_PATH, backup_path)
+    except Exception as e:
+        logger.debug("Lokal zaxira nusxa yaratishda xato: %s", e)
+
+
 async def save_quiz(
     quiz_id: str,
     user_id: int,
@@ -275,6 +324,7 @@ async def save_quiz(
 
         await db.commit()
     await increment_user_tests_created(user_id)
+    _make_local_backup()
     trigger_cloud_sync_background()
 
 
@@ -408,6 +458,79 @@ async def get_user_quizzes_count(user_id: int) -> int:
         ) as cursor:
             row = await cursor.fetchone()
             return row[0] if row else 0
+
+
+async def search_user_quizzes(user_id: int, query: str, limit: int = 20) -> list[dict[str, Any]]:
+    """Foydalanuvchi tuzgan testlarni sarlavha, mavzu yoki to'plam bo'yicha qidirish."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        q_like = f"%{query.strip()}%"
+        sql = """
+        SELECT * FROM quizzes
+        WHERE title LIKE ? OR topic LIKE ? OR batch_title LIKE ?
+        ORDER BY CASE WHEN user_id = ? THEN 0 ELSE 1 END, created_at DESC
+        LIMIT ?
+        """
+        async with db.execute(sql, (q_like, q_like, q_like, user_id, limit)) as cursor:
+            rows = await cursor.fetchall()
+            result = []
+            for r in rows:
+                item = dict(r)
+                try:
+                    item["questions"] = json.loads(item["questions_json"])
+                except Exception:
+                    item["questions"] = []
+                result.append(item)
+            return result
+
+
+def export_db_bytes() -> bytes:
+    """Ma'lumotlar bazasini WAL checkpoint qilib, bayt ko'rinishida olish (backup uchun)."""
+    import sqlite3
+    try:
+        with sqlite3.connect(str(DB_PATH), timeout=5.0) as conn:
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+    except Exception:
+        pass
+    return DB_PATH.read_bytes()
+
+
+async def restore_db_from_bytes(data: bytes) -> tuple[bool, int, str]:
+    """Tashqi .db faylidan ma'lumotlar bazasini xavfsiz tiklash."""
+    import shutil
+    import sqlite3
+    if len(data) < 1000:
+        return False, 0, "Fayl hajmi juda kichik yoki noto'g'ri baza fayli."
+
+    tmp_path = DB_PATH.with_suffix(".restore.tmp")
+    try:
+        tmp_path.write_bytes(data)
+        with sqlite3.connect(str(tmp_path), timeout=3.0) as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT count(*) FROM quizzes")
+            cnt = cur.fetchone()[0]
+
+        # Joriy bazani zaxiralab qo'yish
+        if DB_PATH.exists():
+            shutil.copy2(DB_PATH, DB_PATH.with_suffix(f".bak_{int(time.time())}"))
+
+        # Yangi bazani almashtirish
+        tmp_path.replace(DB_PATH)
+        for suffix in ("-wal", "-shm"):
+            wal_file = DB_PATH.with_name(DB_PATH.name + suffix)
+            try:
+                wal_file.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+        _make_local_backup()
+        mark_db_dirty()
+        trigger_cloud_sync_background()
+        return True, cnt, f"Baza muvaffaqiyatli tiklandi ({cnt} ta test mavjud)."
+    except Exception as e:
+        if tmp_path.exists():
+            tmp_path.unlink(missing_ok=True)
+        return False, 0, f"Tiklashda xatolik: {e}"
 
 
 async def get_user_taken_quizzes_count(user_id: int) -> int:

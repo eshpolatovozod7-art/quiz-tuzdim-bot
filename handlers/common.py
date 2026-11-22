@@ -1,9 +1,11 @@
 import html
+import logging
 import time
 from aiogram import Router, F, Bot
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, BufferedInputFile
 from aiogram.filters import CommandStart, Command, CommandObject
 from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 
 from database.db import (
     register_or_update_user,
@@ -19,6 +21,9 @@ from database.db import (
     get_user_batch_quizzes,
     get_user_batch_quizzes_count,
     delete_quiz,
+    search_user_quizzes,
+    export_db_bytes,
+    restore_db_from_bytes,
 )
 from keyboards.inline_keyboards import (
     get_main_menu_keyboard,
@@ -28,10 +33,21 @@ from keyboards.inline_keyboards import (
     get_my_quizzes_categories_keyboard,
     get_batch_quizzes_keyboard,
     get_delete_quiz_confirmation_keyboard,
+    get_search_results_keyboard,
 )
 from handlers.quiz_play import send_quiz_polls_to_chat, send_group_quiz_lobby, format_quiz_ready_text, format_quiz_single_ready_text
 
+logger = logging.getLogger(__name__)
+
 router = Router()
+
+
+class QuizSearchState(StatesGroup):
+    waiting_query = State()
+
+
+class QuizRestoreState(StatesGroup):
+    waiting_file = State()
 
 
 @router.message(CommandStart())
@@ -99,12 +115,13 @@ async def handle_start(message: Message, command: CommandObject, bot: Bot, state
             return
         else:
             await message.answer(
-                "⚠️ <b>Kechirasiz, ushbu test topilmadi yoki eskirgan.</b>\n\n"
-                "Iltimos, yangi test tuzing yoki <b>«📜 Mening testlarim»</b> bo‘limidan tanlang.",
+                "⚠️ <b>Kechirasiz, ushbu havola bo'yicha test topilmadi yoki eskirgan.</b>\n\n"
+                "Qidiruv orqali testingizni topishingiz yoki <b>«📜 Mening testlarim»</b> bo‘limidan tanlashingiz mumkin:",
                 reply_markup=InlineKeyboardMarkup(
                     inline_keyboard=[
-                        [InlineKeyboardButton(text="🎲 Yangi test tuzish", callback_data="menu:create")],
+                        [InlineKeyboardButton(text="🔍 Test qidirish", callback_data="history:search")],
                         [InlineKeyboardButton(text="📜 Mening testlarim", callback_data="menu:history")],
+                        [InlineKeyboardButton(text="🎲 Yangi test tuzish", callback_data="menu:create")],
                     ]
                 ),
                 parse_mode="HTML",
@@ -235,9 +252,28 @@ async def handle_history(event: Message | CallbackQuery, bot: Bot) -> None:
 
     # Agar foydalanuvchi maxsus "To'plamlar" bo'limini tanlasa:
     is_batches_view = isinstance(event, CallbackQuery) and (event.data or "").startswith("history:tab:batches")
-    if is_batches_view and batches:
+    if is_batches_view:
         if isinstance(event, CallbackQuery):
             await event.answer()
+
+        if not batches:
+            text = (
+                "📁 <b>To'plamlar ro'yxati:</b>\n\n"
+                "Sizda hali birorta to'plam mavjud emas. Yangi test tuzganingizda testlar avtomatik tarzda to'plamlarga ajratiladi."
+            )
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="📝 Barcha testlarim", callback_data="history:tab:created:1")],
+                [InlineKeyboardButton(text="🎲 Yangi test tuzish", callback_data="menu:create")],
+                [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="menu:home")],
+            ])
+            if isinstance(event, CallbackQuery) and event.message:
+                try:
+                    await event.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+                except Exception:
+                    await event.message.answer(text, reply_markup=kb, parse_mode="HTML")
+            else:
+                await event.answer(text, reply_markup=kb, parse_mode="HTML")
+            return
 
         batch_list_text = []
         for b in batches:
@@ -668,3 +704,165 @@ async def handle_excel_command(message: Message, bot: Bot) -> None:
         import logging
         logging.getLogger(__name__).exception("Excel yaratishda xatolik: %s", e)
         await message.answer("❌ Excel hisobot yaratishda xatolik yuz berdi.")
+
+
+# =====================================================================
+# QIDIRISH (SEARCH) HANDLERLARI
+# =====================================================================
+
+@router.message(Command("search", "find"))
+@router.callback_query(F.data == "history:search")
+async def handle_search_start(event: Message | CallbackQuery, command: CommandObject | None = None, state: FSMContext | None = None) -> None:
+    """Testlarni qidirish."""
+    user = event.from_user
+    if not user:
+        return
+
+    # Agar /search vocabulary deb yozilgan bo'lsa
+    query = ""
+    if isinstance(event, Message) and command and command.args:
+        query = command.args.strip()
+
+    if query:
+        quizzes = await search_user_quizzes(user.id, query)
+        if quizzes:
+            text = (
+                f"🔍 <b>«{html.escape(query)}» bo'yicha {len(quizzes)} ta test topildi:</b>\n\n"
+                f"<i>Ochish uchun kerakli testni tanlang:</i> 👇"
+            )
+            kb = get_search_results_keyboard(quizzes)
+        else:
+            text = (
+                f"⚠️ <b>«{html.escape(query)}» bo'yicha hech qanday test topilmadi.</b>\n\n"
+                f"Boshqa so'z bilan qidirib ko'ring yoki barcha testlaringizni oching."
+            )
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔍 Qaytadan qidirish", callback_data="history:search")],
+                [InlineKeyboardButton(text="📜 Mening testlarim", callback_data="menu:history")],
+                [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="menu:home")],
+            ])
+        await event.answer(text, reply_markup=kb, parse_mode="HTML")
+        return
+
+    # Foydalanuvchidan qidiruv so'zini so'rash
+    if state:
+        await state.set_state(QuizSearchState.waiting_query)
+
+    text = (
+        "🔍 <b>Test qidirish:</b>\n\n"
+        "Qidirmoqchi bo'lgan test nomi, mavzusi yoki so'zni yozib yuboring.\n"
+        "<i>(Masalan: <b>Vocabulary</b>, <b>Matematika</b>, <b>Lesson 1</b>)</i>"
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 Ortga", callback_data="menu:history")],
+    ])
+
+    if isinstance(event, CallbackQuery):
+        await event.answer()
+        if event.message:
+            await event.message.answer(text, reply_markup=kb, parse_mode="HTML")
+    else:
+        await event.answer(text, reply_markup=kb, parse_mode="HTML")
+
+
+@router.message(QuizSearchState.waiting_query, F.text)
+async def handle_search_query_input(message: Message, state: FSMContext) -> None:
+    """Foydalanuvchi qidiruv so'zini kiritganda natijalarni chiqarish."""
+    query = (message.text or "").strip()
+    await state.clear()
+    user = message.from_user
+    if not user:
+        return
+
+    quizzes = await search_user_quizzes(user.id, query)
+    if quizzes:
+        text = (
+            f"🔍 <b>«{html.escape(query)}» bo'yicha {len(quizzes)} ta test topildi:</b>\n\n"
+            f"<i>Ochish uchun kerakli testni tanlang:</i> 👇"
+        )
+        kb = get_search_results_keyboard(quizzes)
+    else:
+        text = (
+            f"⚠️ <b>«{html.escape(query)}» bo'yicha test topilmadi.</b>\n\n"
+            f"Boshqa so'z bilan qidirib ko'ring yoki testlar ro'yxatini ko'ring."
+        )
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔍 Qaytadan qidirish", callback_data="history:search")],
+            [InlineKeyboardButton(text="📜 Mening testlarim", callback_data="menu:history")],
+            [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="menu:home")],
+        ])
+    await message.answer(text, reply_markup=kb, parse_mode="HTML")
+
+
+# =====================================================================
+# BAZANI ZAXIRALASH VA TIKLASH (BACKUP & RESTORE)
+# =====================================================================
+
+@router.message(Command("backup", "db_backup"))
+async def handle_backup_command(message: Message, bot: Bot) -> None:
+    """Baza faylini Telegram orqali to'g'ridan-to'g'ri foydalanuvchiga yuborish."""
+    user = message.from_user
+    if not user:
+        return
+
+    try:
+        data = export_db_bytes()
+        count = await get_user_quizzes_count(user.id)
+        input_file = BufferedInputFile(data, filename="quiz_bot.db")
+        caption = (
+            "💾 <b>Ma'lumotlar bazasi zaxira nusxasi (Backup)</b>\n\n"
+            f"📊 Jami saqlangan testlar: <b>{count} ta</b>\n"
+            f"📁 Fayl hajmi: <b>{len(data) // 1024} KB</b>\n\n"
+            "💡 <i>Ushbu fayl sizning barcha tuzgan va ishlagan testlaringizni o'z ichiga oladi. "
+            "Server qayta o'rnatilganda ushbu faylni botga yuborib (yoki <code>/restore</code> qilib) "
+            "bir lahzada testlaringizni tiklashingiz mumkin!</i> 🚀"
+        )
+        await message.answer_document(document=input_file, caption=caption, parse_mode="HTML")
+    except Exception as e:
+        logger.error("Backup yuborishda xato: %s", e)
+        await message.answer(f"⚠️ Backup yaratishda xatolik yuz berdi: {e}")
+
+
+@router.message(Command("restore"))
+async def handle_restore_command(message: Message, state: FSMContext) -> None:
+    """Zaxira bazani tiklash so'rovi."""
+    await state.set_state(QuizRestoreState.waiting_file)
+    await message.answer(
+        "📥 <b>Ma'lumotlar bazasini qayta tiklash (Restore)</b>\n\n"
+        "Iltimos, avval saqlab olingan <code>quiz_bot.db</code> faylini ushbu chatga <b>hujjat (file)</b> ko'rinishida yuboring.\n\n"
+        "⚠️ <i>Diqqat: Yangi fayl yuklanganda, mavjud bazadagi barcha testlar tiklanadi.</i>",
+        parse_mode="HTML",
+    )
+
+
+@router.message(QuizRestoreState.waiting_file, F.document)
+async def handle_restore_file(message: Message, state: FSMContext, bot: Bot) -> None:
+    """Yuborilgan .db faylini tekshirib bazani tiklash."""
+    doc = message.document
+    if not doc or not (doc.file_name and doc.file_name.endswith(".db")):
+        await message.answer("⚠️ Iltimos, faqat <code>.db</code> formatidagi ma'lumotlar bazasi faylini yuboring.")
+        return
+
+    status_msg = await message.answer("⏳ Baza yuklanmoqda va tekshirilmoqda...")
+    try:
+        file = await bot.get_file(doc.file_id)
+        from io import BytesIO
+        stream = BytesIO()
+        await bot.download_file(file.file_path, stream)
+        data = stream.getvalue()
+
+        success, cnt, msg = await restore_db_from_bytes(data)
+        await state.clear()
+        if success:
+            await status_msg.edit_text(
+                f"✅ <b>Baza muvaffaqiyatli tiklandi!</b> 🚀\n\n"
+                f"📊 Tiklangan testlar: <b>{cnt} ta</b>\n\n"
+                f"Endi <b>«📜 Mening testlarim»</b> bo'limidan barcha testlaringizni topishingiz mumkin.",
+                parse_mode="HTML",
+            )
+        else:
+            await status_msg.edit_text(f"❌ <b>Tiklashda xatolik yuz berdi:</b> {msg}", parse_mode="HTML")
+    except Exception as e:
+        await state.clear()
+        logger.error("Restore qilishda xatolik: %s", e)
+        await status_msg.edit_text(f"❌ Xatolik yuz berdi: {e}")

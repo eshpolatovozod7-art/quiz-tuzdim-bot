@@ -71,12 +71,62 @@ def try_repair_and_parse_json(text: str) -> Any:
     return None
 
 
+def is_vocabulary_content(
+    topic: str | None = None,
+    text: str | None = None,
+    filename: str | None = None,
+) -> bool:
+    """Foydalanuvchi ingliz tili lug'at ro'yxati (vocabulary list / word - translation) yuborganini aniqlash."""
+    combined = f"{topic or ''} {filename or ''}".lower()
+    vocab_keywords = [
+        "vocabulary", "vocablry", "vocab", "lug'at", "lugat", "lug‘at", "lug`at",
+        "words list", "word list", "wordlist",
+        "so'zlar ro'yxati", "sozlar royxati", "so'zlar", "sozlar",
+        "so'z boyligi", "soz boyligi", "phrasal verbs", "idioms",
+        "essential words", "inglizcha so'z", "english words",
+        "dictionary", "glossary", "lexis"
+    ]
+    # 1. Sarlavha yoki fayl nomida lug'at kalit so'zi bo'lsa darhol True
+    if any(k in combined for k in vocab_keywords):
+        return True
+
+    if not text:
+        return False
+
+    raw_text = text.strip()
+    if any(k in raw_text[:1000].lower() for k in vocab_keywords):
+        return True
+
+    from services.quiz_service import parse_vocabulary_pairs
+    pairs = parse_vocabulary_pairs(raw_text)
+    if len(pairs) >= 4:
+        return True
+
+    lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
+    vocab_line_pattern = re.compile(
+        r"^([\d+•\-\*]+[\.\)]?\s*)?"
+        r"[a-zA-Zа-яА-ЯёЁўқғҳЎҚҒҲʻʼ']"
+        r"[a-zA-Zа-яА-ЯёЁўқғҳЎҚҒҲʻʼ'\s\(\)/]{0,40}\s*"
+        r"(?:->|=>|[-–—:=/|]|\t)\s*"
+        r".+$"
+    )
+    matching_lines = sum(1 for line in lines if vocab_line_pattern.match(line))
+    if len(lines) >= 4 and matching_lines >= max(4, int(len(lines) * 0.40)):
+        return True
+
+    return False
+
+
 def is_english_grammar_or_formula_content(
     topic: str | None = None,
     text: str | None = None,
     filename: str | None = None,
 ) -> bool:
     """Mavzu, matn yoki fayl nomi ingliz tili grammatikasi, zamonlar va formulalarga oidligini aniqlash."""
+    # Agar bu lug'at (vocabulary) bo'lsa, uni grammatika deb hisoblamaslik!
+    if is_vocabulary_content(topic=topic, text=text, filename=filename):
+        return False
+
     combined = f"{topic or ''} {filename or ''} {(text or '')[:15000]}".lower()
 
     # 1. Zamonlar va asosiy grammatik mavzular
@@ -117,9 +167,9 @@ def is_english_grammar_or_formula_content(
         if re.search(pat, combined, re.IGNORECASE):
             return True
 
-    # 3. Ingliz tili va qoida/formula birikmasi
+    # 3. Ingliz tili va aniq grammatika formulasi
     has_english = any(w in combined for w in ["ingliz", "english", "ielts", "cefr"])
-    has_formula = any(w in combined for w in ["formula", "qoida", "tuzilish", "struktur", "tense", "zamon", "verb", "gap", "tushib qolgan"])
+    has_formula = any(w in combined for w in ["grammar formula", "tenses formula", "zamon formulalari", "formula of tenses", "grammatika qoidalari"])
     if has_english and has_formula:
         return True
 
@@ -130,55 +180,6 @@ def is_beginner_difficulty(difficulty: str | None) -> bool:
     """Qiyinlik darajasi boshlang'ich / oson ekanligini tekshirish."""
     diff = (difficulty or "medium").lower()
     return diff in ("easy", "beginner", "oson", "elementary", "a1", "a2", "boshlang'ich", "boshlangich")
-
-
-def is_vocabulary_content(
-    topic: str | None = None,
-    text: str | None = None,
-    filename: str | None = None,
-) -> bool:
-    """Foydalanuvchi ingliz tili lug'at ro'yxati (vocabulary list / word - translation) yuborganini aniqlash."""
-    # Agar bu grammatika, zamonlar yoki formulalar bo'lsa, lug'at deb xato hisoblanmasin
-    if is_english_grammar_or_formula_content(topic=topic, text=text, filename=filename):
-        return False
-
-    combined = f"{topic or ''} {filename or ''}".lower()
-    vocab_keywords = [
-        "vocabulary", "vocablry", "vocab", "lug'at", "lugat", "lug‘at", "lug`at",
-        "words list", "word list", "wordlist",
-        "so'zlar ro'yxati", "sozlar royxati", "so'zlar", "sozlar",
-        "so'z boyligi", "soz boyligi", "phrasal verbs", "idioms",
-        "essential words", "inglizcha so'z", "english words",
-        "dictionary", "glossary", "lexis"
-    ]
-    if any(k in combined for k in vocab_keywords):
-        return True
-
-    if not text:
-        return False
-
-    raw_text = text.strip()
-    if any(k in raw_text[:500].lower() for k in vocab_keywords):
-        return True
-
-    from services.quiz_service import parse_vocabulary_pairs
-    pairs = parse_vocabulary_pairs(raw_text)
-    if len(pairs) >= 5:
-        return True
-
-    lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
-    vocab_line_pattern = re.compile(
-        r"^([\d+•\-\*]+[\.\)]?\s*)?"
-        r"[a-zA-Zа-яА-ЯёЁўқғҳЎҚҒҲʻʼ']"
-        r"[a-zA-Zа-яА-ЯёЁўқғҳЎҚҒҲʻʼ'\s\(\)/]{0,40}\s*"
-        r"(?:->|=>|[-–—:=/|]|\t)\s*"
-        r".+$"
-    )
-    matching_lines = sum(1 for line in lines if vocab_line_pattern.match(line))
-    if len(lines) >= 4 and matching_lines >= max(4, int(len(lines) * 0.40)):
-        return True
-
-    return False
 
 
 def is_english_content(
@@ -588,16 +589,6 @@ class GeminiService:
             )
             listening_sample_json = '    "audio_text": "Spoken text or dialogue...",\n'
 
-        is_grammar_formula = is_english_grammar_or_formula_content(
-            topic=topic,
-            text=text_content,
-            filename=file_name,
-        )
-        is_english = is_english_content(
-            topic=topic,
-            text=text_content,
-            filename=file_name,
-        )
         is_vocab = is_vocabulary_content(
             topic=topic,
             text=text_content,
@@ -605,6 +596,18 @@ class GeminiService:
         )
         if is_vocab:
             is_english = True
+            is_grammar_formula = False
+        else:
+            is_grammar_formula = is_english_grammar_or_formula_content(
+                topic=topic,
+                text=text_content,
+                filename=file_name,
+            )
+            is_english = is_english_content(
+                topic=topic,
+                text=text_content,
+                filename=file_name,
+            )
 
         is_beginner = is_beginner_difficulty(difficulty)
 
@@ -625,8 +628,18 @@ class GeminiService:
             english_directive_clause = ""
             vocabulary_clause = VOCABULARY_BEGINNER_DIRECTIVE
         elif is_vocab:
-            vocabulary_clause = get_vocabulary_directive(difficulty)
-            english_directive_clause = ENGLISH_PEDAGOGICAL_MASTER_DIRECTIVE
+            pedagogical_depth_clause = ""
+            master_teacher_clause = ""
+            vocabulary_clause = (
+                get_vocabulary_directive(difficulty) +
+                "\n🚨 QAT'IY VA MAJBURIY TALAB: Barcha savollar FAQAT va FAQAT berilgan manbadagi so'zlarni "
+                "(masalan: lug'atdagi kasblar, mevalar, hayvonlar, kundalik so'zlar) tekshirishi SHART!\n"
+                "Manbada yo'q bo'lgan tasodifiy grammatika ('am/is/are', 'verb to be', yordamchi fe'llar) ASLO TUZILMASIN!\n"
+            )
+            english_directive_clause = (
+                "\n📖 LUG'AT KONTEKSTI: Gaplar manbadagi tekshirilayotgan so'zning lug'aviy ma'nosini "
+                "to'g'ri tushunganlikni aniqlashga qaratilsin.\n"
+            )
         elif is_english and is_beginner:
             pedagogical_depth_clause = ""
             master_teacher_clause = ""
@@ -635,7 +648,7 @@ class GeminiService:
             english_directive_clause = ENGLISH_PEDAGOGICAL_MASTER_DIRECTIVE
 
         grammar_formula_clause = ""
-        if is_grammar_formula:
+        if is_grammar_formula and not is_vocab:
             grammar_formula_clause = (
                 "\n"
                 "════════════════════════════════════════════════════════════════════\n"
@@ -693,6 +706,19 @@ class GeminiService:
                 f"   - Variantlar ichida tillarni aralashtirish yoki so'zga uning tarjimasi bo'lmagan so'zni to'g'ri javob qilish QAT'IYAN TAQIQLANADI! Variantlar lo'nda va faqat 1 ta so'zdan iborat bo'lsin.\n"
             )
             sample_expl = "💡 water — suv degani."
+        elif is_vocab:
+            prompt_intro = (
+                f"Siz ingliz tili lug'at boyligi (Vocabulary) bo'yicha mahoratli ustozsiz.\n"
+                f"Taqdim etilgan manbadagi so'zlar ro'yxatidan foydalanuvchi uchun ROPPA-ROSA {count} TA "
+                f"manbada berilgan so'zlarni tekshiruvchi kontekstli sifatli test savollarini tuzing.\n\n"
+            )
+            rule4_clause = (
+                f"4. explanation (Izoh): O'zbek tilida so'zning ma'nosini lo'nda tushuntirib bering (maksimal 180 belgi).\n"
+            )
+            rule6_clause = (
+                f"6. Til qoidasi: Savol gaplari ingliz tilida bo'sh o'rin '______' bilan, variantlar faqat manbadagi inglizcha so'zlar, izoh (explanation) esa o'zbek tilida bo'lsin.\n"
+            )
+            sample_expl = "💡 Ustoz maslahati: ..."
         else:
             prompt_intro = (
                 f"Siz 20 yillik tajribaga ega oliy toifali ustoz-metodist, akademik repetitor va pedagog-testologsiz.\n"
@@ -945,6 +971,7 @@ class GeminiService:
                             count=missing,
                             options_count=options_count,
                             used_questions=(used_questions or set()) | seen_clean,
+                            text_content=text_content,
                         )
                         valid_questions.extend(extra_questions[:missing])
                         return valid_questions[:count]
@@ -1093,11 +1120,13 @@ class GeminiService:
             "olympiad": "Olimpiada (ekspert daraja)",
         }.get(difficulty, "O'rta (standart daraja)")
 
-        is_grammar_formula = is_english_grammar_or_formula_content(text=text_content)
-        is_english = is_english_content(text=text_content)
         is_vocab = is_vocabulary_content(text=text_content)
         if is_vocab:
             is_english = True
+            is_grammar_formula = False
+        else:
+            is_grammar_formula = is_english_grammar_or_formula_content(text=text_content)
+            is_english = is_english_content(text=text_content)
 
         level_batch_clause = get_difficulty_calibration_directive(
             difficulty=difficulty,
@@ -1118,8 +1147,18 @@ class GeminiService:
             english_batch_clause = ""
             vocabulary_batch_clause = VOCABULARY_BEGINNER_DIRECTIVE
         elif is_vocab:
-            vocabulary_batch_clause = get_vocabulary_directive(difficulty)
-            english_batch_clause = ENGLISH_PEDAGOGICAL_MASTER_DIRECTIVE
+            pedagogical_batch_clause = ""
+            master_teacher_batch_clause = ""
+            vocabulary_batch_clause = (
+                get_vocabulary_directive(difficulty) +
+                "\n🚨 QAT'IY TALAB: Barcha savollar FAQAT va FAQAT manbadagi so'zlarni "
+                "(masalan: lug'atdagi kasblar, mevalar, hayvonlar, kundalik so'zlar) tekshirishi SHART!\n"
+                "Manbada yo'q bo'lgan tasodifiy grammatika ('am/is/are', 'verb to be', yordamchi fe'llar) ASLO TUZILMASIN!\n"
+            )
+            english_batch_clause = (
+                "\n📖 LUG'AT KONTEKSTI: Gaplar manbadagi tekshirilayotgan so'zning lug'aviy ma'nosini "
+                "to'g'ri tushunganlikni aniqlashga qaratilsin.\n"
+            )
         elif is_english and is_beginner:
             pedagogical_batch_clause = ""
             master_teacher_batch_clause = ""
@@ -1128,7 +1167,7 @@ class GeminiService:
             english_batch_clause = ENGLISH_PEDAGOGICAL_MASTER_DIRECTIVE
 
         grammar_batch_clause = ""
-        if is_grammar_formula:
+        if is_grammar_formula and not is_vocab:
             grammar_batch_clause = (
                 "\n🚨 QAT'IY VA MAJBURIY TALAB (INGLIZ TILI FORMULALARI ASOSIDA GAP TO'LDIRISH TESTLARI):\n"
                 "- Har bir dars/mavzu/zamon bo'yicha quruq nazariy savollar (masalan 'Present continuous formulasi qanaqa?') MUTLAQO TUZILMASIN!\n"
@@ -1225,6 +1264,7 @@ class GeminiService:
                             q_list = await self.generate_quiz(
                                 topic=sec_title,
                                 text_content=sec_content if len(sec_content) >= 30 else None,
+                                file_name="vocabulary.pdf" if is_vocab else None,
                                 count=questions_per_topic,
                                 options_count=options_count,
                                 difficulty=difficulty,

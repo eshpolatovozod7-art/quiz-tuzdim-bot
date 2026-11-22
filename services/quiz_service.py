@@ -685,27 +685,57 @@ def extract_lesson_sections(text: str) -> list[dict[str, str]]:
         return []
 
     sections: list[dict[str, str]] = []
+
+    # Agar birinchi topilgan bo'limdan oldin katta mazmun bo'lsa (masalan 1-dars / Vocabularies)
+    first_match = matches[0]
+    if first_match.start() > 120:
+        pre_text = text[:first_match.start()].strip()
+        # Hujjat sarlavhalarini tozalab, mazmunni tekshirish
+        pre_lines = [l.strip() for l in pre_text.splitlines() if l.strip()]
+        if len(pre_lines) >= 6:
+            # Birinchi bo'lim sarlavhasini aniqlash
+            first_title = "1-dars: Lug'at (Vocabularies)"
+            for pl in pre_lines[:5]:
+                if any(w in pl.lower() for w in ["vocab", "lug'at", "dars", "lesson", "unit"]):
+                    first_title = f"1-dars: {pl[:35]}"
+                    break
+            sections.append({"title": first_title, "content": pre_text})
+
     for i in range(len(matches)):
         m = matches[i]
         raw_title = m.group(0).strip()
-        clean_title = re.sub(r"^[#*_•\-\s]+|[#*_•\-\s]+$", "", raw_title).strip()
+        # Faqat 1-qatorni sarlavha qilish (quyisidagi 'English' kabi ustunlarni kesish)
+        first_line = raw_title.splitlines()[0].strip() if raw_title else ""
+        clean_title = re.sub(r"^[#*_•\-\s]+|[#*_•\-\s]+$", "", first_line).strip()
+
+        # "Lessons 1-10" kabi butun hujjat qamrovchi sarlavhani e'tiborsiz qoldirish
+        if re.search(r"(?i)\b(?:lessons?|darslar?|units?)\s*\d+\s*[-–—]\s*\d+\b", clean_title):
+            continue
+
         start = m.end()
         end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
         content = text[start:end].strip()
         if content or len(clean_title) >= 3:
-            sections.append({"title": clean_title[:50], "content": content})
+            sections.append({"title": clean_title[:45], "content": content})
     return sections
 
 
 def parse_vocabulary_pairs(text: str) -> list[tuple[str, str]]:
-    """Matndan so'z-tarjima juftliklarini ajratib olish (aniq ajratgich bilan yozilgan lug'at ro'yxati)."""
+    """Matndan so'z-tarjima juftliklarini ajratib olish (aniq ajratgich yoki ketma-ket qatorlar)."""
     if not text:
         return []
+
     lines = [line.strip() for line in text.splitlines() if line.strip()]
-    splitter = re.compile(r"\s*(?:->|=>|[-–—:=/|]|\t|\s+-\s+)\s*")
+    splitter = re.compile(r"\s*(?:->|=>|\s+[-–—]\s+|[:=/|\t])\s*")
     clean_prefix = re.compile(r"^[\d+•\-\*]+[\.\)]?\s*")
     transcription_pat = re.compile(r"\[.*?\]|\(.*?\)")
-    pairs: list[tuple[str, str]] = []
+    skip_words = {
+        "english", "o‘zbekcha", "o`zbekcha", "ozbekcha", "uzbek",
+        "vocabularies", "vocabulary", "lesson", "dars", "unit",
+    }
+
+    # 1. Bitta qatorda ajratgich bilan yozilgan juftliklar (masalan: book - kitob, dog : it)
+    delim_pairs: list[tuple[str, str]] = []
     for line in lines:
         parts = splitter.split(line, maxsplit=1)
         if len(parts) == 2:
@@ -713,11 +743,39 @@ def parse_vocabulary_pairs(text: str) -> list[tuple[str, str]]:
             left = transcription_pat.sub("", left).strip(" \"'.,;")
             right = transcription_pat.sub("", parts[1]).strip(" \"'.,;")
             if left and right and len(left) <= 60 and len(right) <= 80:
-                has_en_left = bool(re.search(r"^[a-zA-Z\s\-']+$", left))
-                has_en_right = bool(re.search(r"^[a-zA-Z\s\-']+$", right))
-                if has_en_left or has_en_right:
-                    pairs.append((left, right))
-    return pairs
+                if (
+                    left.lower() not in skip_words
+                    and right.lower() not in skip_words
+                    and not any(w in left.lower() for w in ["unit ", "lesson ", "dars ", "page ", "chapter "])
+                ):
+                    delim_pairs.append((left, right))
+
+    # 2. Ketma-ket qatorlarda yozilgan juftliklar (masalan: 1-qator: Apple, 2-qator: olma)
+    consec_pairs: list[tuple[str, str]] = []
+    i = 0
+    while i < len(lines) - 1:
+        l1 = clean_prefix.sub("", lines[i]).strip(" \"'.,;")
+        l2 = clean_prefix.sub("", lines[i + 1]).strip(" \"'.,;")
+
+        # Sarlavhalar va bo'limlarni o'tkazib yuborish
+        if any(h in l1.lower() for h in ["lesson ", "unit ", "dars ", "vocabularies", "vocabulary", "chapter", "bob "]):
+            i += 1
+            continue
+        if l1.lower() in skip_words or l2.lower() in skip_words:
+            i += 1
+            continue
+
+        if l1 and l2 and len(l1) <= 60 and len(l2) <= 80 and not l1.isdigit() and not l2.isdigit():
+            # Lotin/Inglizcha harflar (aksentlar bilan: Café, etc.)
+            is_l1_en = bool(re.match(r"^[a-zA-Z\u00C0-\u00FF\s\'-]+$", l1))
+            is_l2_en = bool(re.match(r"^[a-zA-Z\u00C0-\u00FF\s\'-]+$", l2))
+            if is_l1_en:
+                consec_pairs.append((l1, l2))
+                i += 2
+                continue
+        i += 1
+
+    return consec_pairs if len(consec_pairs) >= len(delim_pairs) else delim_pairs
 
 
 def generate_vocabulary_quiz_from_pairs(
@@ -738,6 +796,61 @@ def generate_vocabulary_quiz_from_pairs(
 
     questions: list[dict[str, Any]] = []
     pair_idx = 0
+
+    for i in range(count):
+        pair = available_pairs[pair_idx % len(available_pairs)]
+        pair_idx += 1
+        w1, w2 = pair
+
+        # Navbatma-navbat: inglizcha -> o'zbekcha yoki o'zbekcha -> inglizcha
+        ask_left_to_right = (i % 2 == 0)
+
+        if ask_left_to_right:
+            target_word = w1
+            correct_ans = w2
+            other_pool = [r for r in all_rights if r.lower() != correct_ans.lower()]
+            q_template = random.choice([
+                f"«{target_word}» so'zining ma'nosi nima?",
+                f"«{target_word}» so'zining to'g'ri tarjimasini toping:",
+                f"«{target_word}» so'zi qanday tarjima qilinadi?",
+            ])
+            explanation = f"💡 {target_word} — {correct_ans} degani."
+            default_fillers = ["suv", "olma", "kitob", "mashina", "uy", "quyosh", "oy", "yaxshi", "katta", "daraxt"]
+        else:
+            target_word = w2
+            correct_ans = w1
+            other_pool = [l for l in all_lefts if l.lower() != correct_ans.lower()]
+            q_template = random.choice([
+                f"«{target_word}» so'zining inglizcha tarjimasi qaysi?",
+                f"«{target_word}» so'zi ingliz tilida nima deyiladi?",
+                f"To'g'ri inglizcha tarjimani tanlang: «{target_word}»",
+            ])
+            explanation = f"💡 {correct_ans} — {target_word} degani."
+            default_fillers = ["water", "apple", "book", "car", "house", "sun", "moon", "good", "big", "tree"]
+
+        distractors: list[str] = []
+        if len(other_pool) >= options_count - 1:
+            distractors = random.sample(other_pool, options_count - 1)
+        else:
+            distractors = list(other_pool)
+            for filler in default_fillers:
+                if len(distractors) >= options_count - 1:
+                    break
+                if filler.lower() != correct_ans.lower() and filler not in distractors:
+                    distractors.append(filler)
+
+        opts = [correct_ans] + distractors[: options_count - 1]
+        random.shuffle(opts)
+        c_id = opts.index(correct_ans)
+
+        questions.append({
+            "question": q_template,
+            "options": opts,
+            "correct_id": c_id,
+            "explanation": explanation,
+        })
+
+    return questions
 
     for i in range(count):
         pair = available_pairs[pair_idx % len(available_pairs)]
@@ -802,6 +915,20 @@ def get_offline_quiz_questions(
     text_content: str | None = None,
 ) -> list[dict[str, Any]]:
     """Mavzuga mos oflayn zaxira savollarni olish va variantlarni aralashtirish."""
+    # 1. Agar matnda lug'at juftliklari mavjud bo'lsa, to'g'ridan-to'g'ri lug'atdan savollar shakllantirish
+    if text_content:
+        v_pairs = parse_vocabulary_pairs(text_content)
+        if len(v_pairs) >= 3:
+            logger.info("Oflayn rejim: matndagi %d ta so'z juftligidan test savollari tuzilmoqda.", len(v_pairs))
+            v_questions = generate_vocabulary_quiz_from_pairs(
+                pairs=v_pairs,
+                count=count,
+                options_count=options_count,
+                used_questions=used_questions,
+            )
+            if v_questions:
+                return v_questions
+
     lower = (topic or "").lower()
     cat = "umumiy"
     if any(k in lower for k in ["matem", "algebra", "hisob", "geometr", "integral", "kvadrat tenglama", "kasr", "progressiya"]):
