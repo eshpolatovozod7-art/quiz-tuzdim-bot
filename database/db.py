@@ -382,6 +382,24 @@ async def delete_quiz(quiz_id: str, user_id: int) -> bool:
     return True
 
 
+async def clear_all_quizzes() -> int:
+    """Barcha testlarni, urinishlarni va ishlatilgan savollarni bazadan to'liq tozalash."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT COUNT(*) FROM quizzes") as cur:
+            count = (await cur.fetchone())[0]
+        await db.execute("DELETE FROM quizzes;")
+        await db.execute("DELETE FROM quiz_attempts;")
+        await db.execute("DELETE FROM used_questions;")
+        await db.execute("DELETE FROM group_scores;")
+        await db.execute("DELETE FROM duels;")
+        await db.execute("UPDATE users SET tests_created = 0, tests_taken = 0, total_correct = 0, total_questions = 0;")
+        await db.commit()
+    _make_local_backup()
+    mark_db_dirty()
+    trigger_cloud_sync_background()
+    return count
+
+
 async def get_user_batch_quizzes(user_id: int, batch_id: int, limit: int = 6, offset: int = 0) -> list[dict[str, Any]]:
     """Muayyan to'plam/kategoriya ichidagi testlarni xronologik tartibda (1, 2, 3...) sahifalab olish."""
     async with aiosqlite.connect(DB_PATH) as db:

@@ -75,6 +75,7 @@ async def set_bot_commands(bot: Bot) -> None:
         BotCommand(command="quizzes", description="📜 Mening testlarim"),
         BotCommand(command="search", description="🔍 Testlarni qidirish"),
         BotCommand(command="backup", description="💾 Zaxira nusxa (baza fayli)"),
+        BotCommand(command="clear_all_tests", description="🗑 Barcha testlarni tozalash"),
         BotCommand(command="stop", description="🛑 Faol testni to'xtatish"),
         BotCommand(command="daily", description="⚡️ Kun Testi (Streak)"),
         BotCommand(command="duel", description="⚔️ 1 vs 1 Viktorina Jangi"),

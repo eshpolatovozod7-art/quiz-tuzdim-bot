@@ -866,3 +866,19 @@ async def handle_restore_file(message: Message, state: FSMContext, bot: Bot) -> 
         await state.clear()
         logger.error("Restore qilishda xatolik: %s", e)
         await status_msg.edit_text(f"❌ Xatolik yuz berdi: {e}")
+
+
+@router.message(Command("clear_all_tests", "reset_tests", "delete_all"))
+async def handle_clear_all_tests(message: Message) -> None:
+    """Barcha testlarni butunlay tozalash buyrug'i."""
+    from database.db import clear_all_quizzes
+    count = await clear_all_quizzes()
+    await message.answer(
+        f"🗑 <b>Barcha testlar butunlay o'chirildi!</b>\n\n"
+        f"Bazada 0 ta test qoldi. Endi xohlagan yangi testingizni tuzishingiz mumkin! 🚀",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🎲 Yangi test tuzish", callback_data="menu:create")],
+            [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="menu:home")],
+        ]),
+        parse_mode="HTML",
+    )
