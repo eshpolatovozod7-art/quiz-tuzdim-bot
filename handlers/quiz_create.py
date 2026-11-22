@@ -739,12 +739,19 @@ async def handle_batch_timer(callback: CallbackQuery, bot: Bot, state: FSMContex
             difficulty=diff,
             batch_id=new_batch_id,
             batch_title=new_batch_title,
+            sync_cloud=False,
         )
         created_quizzes.append({
             "quiz_id": q_id,
             "title": full_title,
             "count": len(t_questions),
         })
+
+    if created_quizzes:
+        from database.db import _make_local_backup
+        from services.cloud_sync import trigger_cloud_sync_background
+        _make_local_backup()
+        trigger_cloud_sync_background()
 
     if status_msg:
         try:

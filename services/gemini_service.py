@@ -862,10 +862,13 @@ class GeminiService:
                         temperature=0.35,
                         max_output_tokens=max(4096, count * 450),
                     )
-                    res = await self.client.aio.models.generate_content(
-                        model=model_name,
-                        contents=contents,
-                        config=config,
+                    res = await asyncio.wait_for(
+                        self.client.aio.models.generate_content(
+                            model=model_name,
+                            contents=contents,
+                            config=config,
+                        ),
+                        timeout=22.0,
                     )
                     raw_text = res.text.strip()
                     if raw_text.startswith("```json"):
@@ -1243,16 +1246,56 @@ class GeminiService:
                     })
             return result_topics
 
-        # 0-BOSQICH (Aniq bo'limlar): Hujjatdan dars bo'limlarini regex orqali ajratib olish va AI orqali test tuzish
+        # 0-BOSQICH (Aniq bo'limlar): Hujjatdan dars bo'limlarini regex orqali ajratib olish va test tuzish
         try:
-            from services.quiz_service import extract_lesson_sections
+            from services.quiz_service import extract_lesson_sections, parse_vocabulary_pairs, generate_vocabulary_quiz_from_pairs
             sections = extract_lesson_sections(text_content)
             if len(sections) >= 2:
                 logger.info("Aniq sarlavhalar orqali %d ta dars/mavzu bo'limi aniqlandi.", len(sections))
                 direct_topics = []
-                sem0 = asyncio.Semaphore(4)
-                target_secs = sections[:10]
+                target_secs = sections[:15]
                 completed_0 = 0
+
+                # Agar bu lug'at (vocabulary) bo'lsa -> 100% aniq va tezkor ravishda so'zlardan test shakllantirish (muzlab qolishni yo'qotadi)
+                if is_vocab:
+                    logger.info("Lug'at dars bo'limlari aniqlandi. Har bir darsdan tezkor testlar tuzilmoqda...")
+                    all_file_pairs = parse_vocabulary_pairs(text_content)
+                    for sec in target_secs:
+                        sec_title = sec["title"]
+                        sec_content = sec["content"]
+                        sec_pairs = parse_vocabulary_pairs(sec_content)
+                        if len(sec_pairs) >= 2:
+                            q_list = generate_vocabulary_quiz_from_pairs(
+                                pairs=sec_pairs,
+                                count=questions_per_topic,
+                                options_count=options_count,
+                            )
+                        else:
+                            q_list = []
+
+                        if len(q_list) < questions_per_topic and all_file_pairs:
+                            extra = generate_vocabulary_quiz_from_pairs(
+                                pairs=all_file_pairs,
+                                count=questions_per_topic - len(q_list),
+                                options_count=options_count,
+                            )
+                            q_list.extend(extra)
+
+                        completed_0 += 1
+                        if progress_callback:
+                            try:
+                                await progress_callback(completed_0, len(target_secs))
+                            except Exception:
+                                pass
+
+                        if q_list:
+                            direct_topics.append({"topic_title": sec_title, "questions": q_list})
+
+                    if len(direct_topics) >= 2:
+                        logger.info("Lug'at darslaridan %d ta to'plam 0.1 soniyada tayyorlandi!", len(direct_topics))
+                        return direct_topics
+
+                sem0 = asyncio.Semaphore(3)
 
                 async def process_single_section(sec: dict[str, str]) -> dict[str, Any] | None:
                     nonlocal completed_0
@@ -1261,13 +1304,16 @@ class GeminiService:
 
                     async with sem0:
                         try:
-                            q_list = await self.generate_quiz(
-                                topic=sec_title,
-                                text_content=sec_content if len(sec_content) >= 30 else None,
-                                file_name="vocabulary.pdf" if is_vocab else None,
-                                count=questions_per_topic,
-                                options_count=options_count,
-                                difficulty=difficulty,
+                            q_list = await asyncio.wait_for(
+                                self.generate_quiz(
+                                    topic=sec_title,
+                                    text_content=sec_content if len(sec_content) >= 30 else None,
+                                    file_name="vocabulary.pdf" if is_vocab else None,
+                                    count=questions_per_topic,
+                                    options_count=options_count,
+                                    difficulty=difficulty,
+                                ),
+                                timeout=25.0,
                             )
                             completed_0 += 1
                             if progress_callback:

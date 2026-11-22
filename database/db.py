@@ -274,6 +274,7 @@ async def save_quiz(
     difficulty: str = "medium",
     batch_id: int | None = None,
     batch_title: str | None = None,
+    sync_cloud: bool = True,
 ) -> None:
     """Yangi tuzilgan quizni saqlash."""
     async with aiosqlite.connect(DB_PATH) as db:
@@ -324,8 +325,9 @@ async def save_quiz(
 
         await db.commit()
     await increment_user_tests_created(user_id)
-    _make_local_backup()
-    trigger_cloud_sync_background()
+    if sync_cloud:
+        _make_local_backup()
+        trigger_cloud_sync_background()
 
 
 async def get_user_max_batch_id(user_id: int) -> int:
